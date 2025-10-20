@@ -7,7 +7,6 @@ import EmailEntry from "../models/EmailEntry.js";
 dotenv.config();
 
 
-
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {

@@ -8,8 +8,8 @@ const router = express.Router();
 
 
 router.post('/send', emailSchema, sendEmail);
-router.get('/get', getEmail);
-router.delete('/delete/:id', deleteEmail);
+router.get('/', getEmail);
+router.delete('/:id', deleteEmail);
 router.post('/verify', verificationCode);
 
 export default router;

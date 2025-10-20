@@ -10,6 +10,7 @@ import emailRoutes from './routes/emails.js';
 import photoRoutes from "./routes/photosRoutes.js";
 import factRoutes from './routes/factRoutes.js'
 
+import adminRoutes from './routes/admins.js'; 
 // (Puedes agregar más rutas aquí: factsRoutes, uploadRoutes, etc.)
 
 dotenv.config();
@@ -32,6 +33,7 @@ mongoose.connect(process.env.MONGO_URI, {
 app.use('/emails', emailRoutes);
 app.use("/photos", photoRoutes);
 app.use("/facts", factRoutes);
+app.use('/admins', adminRoutes);
 // Ejemplo: POST /emails/send, GET /emails/get, etc.
 
 // Servidor
