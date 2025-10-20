@@ -6,6 +6,7 @@ import cors from 'cors';
 
 // Rutas
 import emailRoutes from './routes/emails.js';
+import adminRoutes from './routes/admins.js'; 
 // (Puedes agregar más rutas aquí: factsRoutes, uploadRoutes, etc.)
 
 dotenv.config();
@@ -26,6 +27,7 @@ mongoose.connect(process.env.MONGO_URI, {
 
 // Rutas
 app.use('/emails', emailRoutes);
+app.use('/admins', adminRoutes);
 // Ejemplo: POST /emails/send, GET /emails/get, etc.
 
 // Servidor
