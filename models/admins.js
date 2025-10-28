@@ -6,4 +6,9 @@ const adminSchema = new mongoose.Schema({
   role: { type: String, default: 'Admin' }
 });
 
+
+adminSchema.methods.comparePassword = function(password) {
+  return this.passwordHash === password;
+};
+
 export default mongoose.model('Admin', adminSchema);

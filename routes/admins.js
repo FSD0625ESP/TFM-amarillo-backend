@@ -1,12 +1,8 @@
-import express from 'express';
-import { adminSchema } from '../schemas/adminSchema.js';
-import { createAdmin, loginAdmin, deleteAdmin 
-} from '../controllers/adminController.js';
+import express from "express";
+import { loginAdmin } from "../controllers/adminController.js";
 
 const router = express.Router();
 
-router.post('/create', adminSchema, createAdmin);
-router.post('/login', loginAdmin)
-router.delete('/:id', deleteAdmin);
+router.post("/login", loginAdmin);
 
 export default router;
