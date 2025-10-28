@@ -8,7 +8,7 @@ dotenv.config();
 
 export const completeRegistration = async (req, res) => {
   try {
-    const { email, name, age, country, story, photoYear } = req.body;
+    const { email, name, age, country, } = req.body;
 
     if (!email) {
       return res.status(400).json({ message: "Falta el correo electrónico." });
@@ -48,9 +48,6 @@ export const completeRegistration = async (req, res) => {
       name,
       age,
       country,
-      story,
-      photoYear,
-      photos: uploadedUrls,
       subscribedAt: new Date(),
     });
 

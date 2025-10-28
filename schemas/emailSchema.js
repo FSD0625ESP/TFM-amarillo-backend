@@ -24,10 +24,4 @@ export const emailSchema = [
   body('terms')
     .optional()
     .toBoolean(),
-
-  body('photoYear')
-    .optional()
-    .toInt()
-    .isInt({ min: 1882, max: new Date().getFullYear() })
-    .withMessage(`Photo year must be between 1882 and ${new Date().getFullYear()}`),
 ];

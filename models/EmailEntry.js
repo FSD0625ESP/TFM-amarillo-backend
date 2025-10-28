@@ -7,9 +7,6 @@ const emailEntrySchema = new Schema({
   name: { type: String, required: true },
   age: { type: Number, required: true },
   country: { type: String, required: true },
-  story: { type: String },
-  photoYear: { type: Number },
-  photos: [{ type: String }],
   subscribedAt: { type: Date, default: Date.now },
 });
 
