@@ -13,15 +13,25 @@ export const getAllPhotos = async (req, res) => {
 // ➕ Subir una nueva foto
 export const addPhoto = async (req, res) => {
   try {
-    const { title, description, imageUrl, publicId } = req.body;
+    const { title, description, imageUrl, publicId, year, owner, likes } = req.body;
 
     if (!title || !imageUrl) {
       return res.status(400).json({ message: "Faltan campos obligatorios" });
     }
 
-    const newPhoto = await Photo.create({ title, description, imageUrl, publicId });
+    const newPhoto = await Photo.create({
+      title,
+      description,
+      imageUrl,
+      publicId,
+      year,
+      owner,
+      likes,
+    });
+
     res.status(201).json(newPhoto);
   } catch (error) {
+    console.error("Error al agregar la foto:", error);
     res.status(500).json({ message: "Error al agregar la foto", error });
   }
 };
@@ -52,5 +62,23 @@ export const deletePhoto = async (req, res) => {
     res.status(200).json({ message: "Foto eliminada correctamente" });
   } catch (error) {
     res.status(500).json({ message: "Error al eliminar la foto", error });
+  }
+};
+
+
+// 📊 Obtener la más vieja, más nueva y más likeada
+export const getHighlightedPhotos = async (req, res) => {
+   try {
+    const mostLiked = await Photo.findOne().sort({ likes: -1 });
+    const oldestByYear = await Photo.findOne({ year: { $ne: null } }).sort({ year: 1 });
+    const newestUploaded = await Photo.findOne().sort({ createdAt: -1 });
+
+    res.json({
+      mostLiked,
+      oldestByYear,
+      newestUploaded
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error al obtener fotos destacadas", error });
   }
 };

@@ -3,10 +3,14 @@ import {
   getAllPhotos,
   addPhoto,
   likePhoto,
-  deletePhoto
+  deletePhoto,
+  getHighlightedPhotos
 } from "../controllers/photoController.js";
 
 const router = express.Router();
+
+// ⭐️ Mover esta línea arriba
+router.get("/highlighted", getHighlightedPhotos);
 
 // Rutas limpias y RESTful
 router.get("/", getAllPhotos);           // Obtener todas
