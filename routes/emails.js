@@ -7,7 +7,7 @@ import { verifyToken } from "../controllers/verify-token.js";
 const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
 
-router.post("/magic-link", sendMagicLink);
+router.post("/send-magic-link", sendMagicLink);
 router.get("/verify-token", verifyToken);
 router.post("/complete", upload.array("photos"), completeRegistration);
 router.get("/", getEmail);
