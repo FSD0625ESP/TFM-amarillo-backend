@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import Admin from "../models/admins.js";
+import EmailEntry from "../models/EmailEntry.js";
 
 dotenv.config();
 
@@ -66,5 +67,89 @@ export const createAdmin = async (req, res) => {
   } catch (error) {
     console.error("❌ Error al crear admin:", error);
     return res.status(500).json({ message: "Error interno del servidor." });
+  }
+};
+
+export const verifyAdminToken = (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.split(" ")[1]
+      : null;
+
+    if (!token) {
+      return res.status(401).json({ message: "Token requerido." });
+    }
+
+    jwt.verify(token, process.env.JWT_SECRET);
+    return res.status(200).json({ message: "Token válido." });
+  } catch (error) {
+    return res.status(401).json({ message: "Token inválido." });
+  }
+};
+
+export const getAdminUsers = async (_req, res) => {
+  try {
+    const users = await EmailEntry.find().sort({ subscribedAt: -1 });
+
+    const formatted = users.map((user) => ({
+      _id: user._id,
+      email: user.email,
+      name: user.name,
+      country: user.country,
+      story: user.story,
+      subscribedAt: user.subscribedAt,
+      photos: (user.photos || []).map((photoUrl) => ({
+        url: photoUrl,
+        hidden: user.hiddenPhotos?.includes(photoUrl) || false,
+      })),
+    }));
+
+    return res.status(200).json(formatted);
+  } catch (error) {
+    console.error("❌ Error al obtener usuarios:", error);
+    return res
+      .status(500)
+      .json({ message: "Error al obtener usuarios.", error: error.message });
+  }
+};
+
+export const setPhotoVisibility = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { photoUrl, hidden } = req.body;
+
+    if (!photoUrl) {
+      return res
+        .status(400)
+        .json({ message: "photoUrl es requerido para actualizar visibilidad." });
+    }
+
+    const updateOperation = hidden
+      ? { $addToSet: { hiddenPhotos: photoUrl } }
+      : { $pull: { hiddenPhotos: photoUrl } };
+
+    const updatedUser = await EmailEntry.findByIdAndUpdate(
+      id,
+      updateOperation,
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "Usuario no encontrado." });
+    }
+
+    return res.status(200).json({
+      message: "Visibilidad de la foto actualizada.",
+      userId: id,
+      photoUrl,
+      hidden,
+    });
+  } catch (error) {
+    console.error("❌ Error al actualizar visibilidad:", error);
+    return res.status(500).json({
+      message: "Error al actualizar la visibilidad.",
+      error: error.message,
+    });
   }
 };
