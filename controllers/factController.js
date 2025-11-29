@@ -1,5 +1,6 @@
 import Fact from "../models/Fact.js";
 
+
 export const addFact = async (req, res) => {
   try {
     const data = req.body;
@@ -46,5 +47,53 @@ export const getRandomFact = async (req, res) => {
   } catch (error) {
     console.error("Error al obtener fact aleatorio:", error);
     res.status(500).json({ error: "Error al obtener fact aleatorio" });
+  }
+};
+
+export const getAllFacts = async (req, res) => {
+  try {
+    const facts = await Fact.find().sort({ createdAt: -1 });
+    res.status(200).json({ facts });
+  } catch (error) {
+    res.status(500).json({ error: "Error al obtener los facts" });
+  }
+};
+
+
+export const updateFact = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { text, category } = req.body;
+
+    const updatedFact = await Fact.findByIdAndUpdate(
+      id,
+      { text, category },
+      { new: true }
+    );
+
+    if (!updatedFact) {
+      return res.status(404).json({ error: "Fact no encontrado" });
+    }
+
+    res.status(200).json({ message: "Fact actualizado con éxito", fact: updatedFact });
+  } catch (error) {
+    console.error("Error al actualizar fact:", error);
+    res.status(500).json({ error: "Error al actualizar el fact" });
+  }
+};
+
+export const deleteFact = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deletedFact = await Fact.findByIdAndDelete(id);
+
+    if (!deletedFact) {
+      return res.status(404).json({ error: "Fact no encontrado" });
+    }
+
+    res.status(200).json({ message: "Fact eliminado con éxito" });
+  } catch (error) {
+    console.error("Error al eliminar fact:", error);
+    res.status(500).json({ error: "Error al eliminar el fact" });
   }
 };

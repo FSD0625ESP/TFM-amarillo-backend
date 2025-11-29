@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const photoSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },          // título de la foto
-    description: { type: String, required: true },    // descripción o historia de la foto
+    description: { type: String, required: false },    // descripción o historia de la foto
     imageUrl: { type: String, required: true },       // URL de Cloudinary
     publicId: { type: String, required: true },       // ID de Cloudinary
     year: { type: Number, required: true },           // año en que fue tomada la foto
