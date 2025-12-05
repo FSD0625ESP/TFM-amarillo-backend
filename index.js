@@ -13,6 +13,7 @@ import adminRoutes from "./routes/admins.js";
 // (Puedes agregar más rutas aquí: factsRoutes, uploadRoutes, etc.)
 
 dotenv.config();
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -25,10 +26,7 @@ app.use(express.json());
 
 // Conexión a MongoDB
 mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ Conectado a MongoDB"))
   .catch((err) => console.error("❌ Error de conexión:", err));
 

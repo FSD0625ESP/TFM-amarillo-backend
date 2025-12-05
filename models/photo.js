@@ -14,6 +14,9 @@ const photoSchema = new mongoose.Schema({
    year: { type: Number },// para que el usuario elija el año
   //likedBy: [{ type: String }], // opcional: emails o IDs anónimos- No estoy seguro si es conveniente
   createdAt: { type: Date, default: Date.now },
+  hidden: { type: Boolean, default: false },
+  hiddenReason: { type: String, default: "" },
+  
 });
 
 export default mongoose.model("Photo", photoSchema);

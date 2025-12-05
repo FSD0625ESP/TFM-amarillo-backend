@@ -9,7 +9,9 @@ export const verifyToken = async (req, res) => {
     if (!token)
       return res.status(400).json({ message: "Token requerido." });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log("📥 Token recibido (sin decodificar):", token);
+    const decoded = jwt.verify(decodeURIComponent(token), process.env.JWT_SECRET);
+    console.log("✅ Token verificado correctamente:", decoded);
 
     return res.status(200).json({
       message: "Token válido.",

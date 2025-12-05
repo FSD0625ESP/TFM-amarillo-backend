@@ -1,17 +1,23 @@
-
 import dotenv from "dotenv";
 import EmailEntry from "../models/EmailEntry.js";
 import cloudinary from "../config/cloudinary.js";
+import Photo from "../models/photo.js";
 import { Readable } from "stream";
 
 dotenv.config();
 
 export const completeRegistration = async (req, res) => {
   try {
-    const { email, name, age, country, story, photoYear } = req.body;
+    const { email, name, age, country, story, photoYear, title } = req.body;
 
     if (!email) {
       return res.status(400).json({ message: "Falta el correo electrónico." });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "Debes subir al menos una fotografía." });
     }
 
     
@@ -29,7 +35,11 @@ export const completeRegistration = async (req, res) => {
           { folder: "proyecto_amarillo" },
           (error, result) => {
             if (error) reject(error);
-            else resolve(result.secure_url);
+            else
+              resolve({
+                url: result.secure_url,
+                publicId: result.public_id,
+              });
           }
         );
 
@@ -40,7 +50,8 @@ export const completeRegistration = async (req, res) => {
       });
     });
 
-    const uploadedUrls = await Promise.all(uploadPromises);
+    const uploadedAssets = await Promise.all(uploadPromises);
+    const uploadedUrls = uploadedAssets.map((asset) => asset.url);
 
    
     const newUser = new EmailEntry({
@@ -55,6 +66,24 @@ export const completeRegistration = async (req, res) => {
     });
 
     await newUser.save();
+
+    const normalizedTitle = title?.trim() || "Fotografía del Proyecto Amarillo";
+    const normalizedDescription = story?.trim() || "";
+    const normalizedYear = photoYear ? Number(photoYear) : undefined;
+
+    const photoDocs = uploadedAssets.map((asset, index) => ({
+      title:
+        uploadedAssets.length > 1
+          ? `${normalizedTitle} #${index + 1}`
+          : normalizedTitle,
+      description: normalizedDescription,
+      owner: newUser._id,
+      imageUrl: asset.url,
+      publicId: asset.publicId,
+      year: normalizedYear,
+    }));
+
+    await Photo.insertMany(photoDocs);
 
     return res.status(200).json({
       message: "Registro completado con éxito.",
@@ -71,8 +100,14 @@ export const completeRegistration = async (req, res) => {
 
 export const getEmail = async (req, res) => {
   try {
-    const emails = await EmailEntry.find().sort({ subscribedAt: -1 });
-    return res.status(200).json(emails);
+    const users = await EmailEntry.find().lean();
+
+    const enriched = users.map((u) => ({
+      ...u,
+      photosCount: Array.isArray(u.photos) ? u.photos.length : 0
+    }));
+
+    return res.status(200).json(enriched);
   } catch (error) {
     console.error("❌ Error en getEmail:", error);
     return res.status(500).json({
@@ -99,6 +134,64 @@ export const deleteEmail = async (req, res) => {
     console.error("❌ Error en deleteEmail:", error);
     return res.status(500).json({
       message: "Error al eliminar el correo.",
+      error: error.message,
+    });
+  }
+};
+
+export const getUserPhotos = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await EmailEntry.findById(id).lean();
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado." });
+    }
+
+    let photos = await Photo.find({ owner: user._id }).lean();
+    if (!photos.length) {
+      photos = await Photo.find({ owner: user.email }).lean();
+    }
+
+    let formatted;
+    if (photos.length) {
+      formatted = photos.map((photo) => ({
+        _id: photo._id,
+        id: photo._id.toString(),
+        url: photo.imageUrl,
+        imageUrl: photo.imageUrl,
+        title: photo.title,
+        description: photo.description,
+        hidden: Boolean(photo.hidden),
+        likes: photo.likes,
+        createdAt: photo.createdAt,
+      }));
+    } else {
+      // Fallback legacy data
+      const legacyPhotos = Array.isArray(user.photos) ? user.photos : [];
+      const hiddenLegacy = Array.isArray(user.hiddenPhotos)
+        ? user.hiddenPhotos
+        : [];
+      formatted = legacyPhotos.map((url, index) => ({
+        _id: `${id}-${index}`,
+        id: `${id}-${index}`,
+        url,
+        imageUrl: url,
+        title: "",
+        description: "",
+        hidden: hiddenLegacy.includes(url),
+        likes: 0,
+      }));
+    }
+
+    return res.status(200).json({
+      email: user.email,
+      photos: formatted,
+    });
+  } catch (error) {
+    console.error("❌ Error al obtener fotos del usuario:", error);
+    return res.status(500).json({
+      message: "Error al obtener fotos del usuario.",
       error: error.message,
     });
   }
