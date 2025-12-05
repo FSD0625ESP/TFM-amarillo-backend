@@ -3,6 +3,8 @@ import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
+import http from "http";
+import setupOnlineUsersWS from "./ws/onlineUsers.js";
 
 // Rutas
 import emailRoutes from "./routes/emails.js";
@@ -16,6 +18,10 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const server = http.createServer(app);
+
+// Inicializar WebSocket de usuarios online
+setupOnlineUsersWS(server);
 
 // Middlewares
 app.use(cors({ origin: ["http://localhost:5173", "http://localhost:5174"] }));
@@ -37,11 +43,13 @@ app.use("/facts", factRoutes);
 app.use("/admins", adminRoutes);
 // Ejemplo: POST /emails/send, GET /emails/get, etc.
 
-// Servidor
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
-});
-
 app.get("/ping", (req, res) => {
   res.send("Servidor activo 🚀");
 });
+
+// Servidor HTTP (preparado para websockets u otros servicios en el mismo puerto)
+server.listen(PORT, () => {
+  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+});
+
+
