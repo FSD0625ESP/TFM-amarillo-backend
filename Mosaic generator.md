@@ -1,6 +1,6 @@
 ## Puntos básicos
 El funcionamiento debería ser el siguiente:
-1. Analizamos la imagen principal y extraemos con [Sharp](https://www.npmjs.com/package/sharp) el color de cada uno de los tiles (baldosas) que la conforman. El tamaño de la baldosa lo podéis indicar vosotros.
+1. Analizamos la imagen principal y extraemos el color de cada uno de los tiles (baldosas) que la conforman. El tamaño de la baldosa lo podéis indicar vosotros.
 2. Guardamos esta matriz en base de datos (por ejemplo le podemos llamar "tiles", de baldosas) en el siguiente formato `x,y,#FFFFFF,matched` donde matched debería ir la URL de la imagen que ha matcheado con el tile y así marcarla como asignada.
 3. Por cada imagen subida, analizamos el color predominante. Os paso el código de la función `extractColor(imageBuffer, colorCount)`
 4. Luego se busca el tile con el color más cercano con la función colorDistance(color1, color2). Para ello deberíais hacer un bucle de todos los tiles disponibles y encontrar el mejor match. Recordad que en js tenéis el `reduce` para estas tareas (si el nuevo elemento se acerca más, o sea, la distancia es menor, se guarda el nuevo elemento). Aquí tendréis que decidir si queréis reutilizar imágenes, ya que se os puede ir de la mano si no lo hacéis.
