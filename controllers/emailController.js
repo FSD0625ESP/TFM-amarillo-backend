@@ -139,6 +139,43 @@ export const deleteEmail = async (req, res) => {
   }
 };
 
+export const updateEmailEntry = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { country } = req.body;
+
+    const user = await EmailEntry.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado." });
+    }
+
+    if (!country || typeof country !== "string" || country.trim().length === 0) {
+      return res.status(400).json({ message: "El país es obligatorio." });
+    }
+
+    const countryCode = country.trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(countryCode)) {
+      return res
+        .status(400)
+        .json({ message: "El país debe ser un código ISO de 2 letras." });
+    }
+
+    user.country = countryCode;
+    await user.save();
+
+    return res.status(200).json({
+      message: "Usuario actualizado correctamente.",
+      user,
+    });
+  } catch (error) {
+    console.error("❌ Error en updateEmailEntry:", error);
+    return res.status(500).json({
+      message: "Error al actualizar el usuario.",
+      error: error.message,
+    });
+  }
+};
+
 export const getUserPhotos = async (req, res) => {
   try {
     const { id } = req.params;

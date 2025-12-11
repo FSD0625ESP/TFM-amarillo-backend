@@ -5,6 +5,7 @@ import {
   getEmail,
   deleteEmail,
   getUserPhotos,
+  updateEmailEntry,
 } from "../controllers/emailController.js";
 
 import { sendMagicLink } from "../controllers/magic-link.js";
@@ -20,6 +21,7 @@ router.post("/send-edit-link", sendEditMagicLink);
 router.get("/verify-token", verifyToken);
 router.post("/complete", upload.array("photos"), completeRegistration);
 router.get("/", getEmail);
+router.put("/:id", updateEmailEntry);
 router.get("/:id/photos", getUserPhotos);
 router.delete("/:id", deleteEmail);
 
