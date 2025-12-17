@@ -10,7 +10,7 @@ import setupOnlineUsersWS from "./ws/onlineUsers.js";
 import emailRoutes from "./routes/emails.js";
 import photoRoutes from "./routes/photosRoutes.js";
 import factRoutes from "./routes/factRoutes.js";
-
+import statsRoutes from "./routes/statsRoutes.js";
 import adminRoutes from "./routes/admins.js";
 // (Puedes agregar más rutas aquí: factsRoutes, uploadRoutes, etc.)
 
@@ -24,7 +24,15 @@ const server = http.createServer(app);
 setupOnlineUsersWS(server);
 
 // Middlewares
-app.use(cors({ origin: process.env.FRONTEND }));
+app.use(
+  cors({
+    origin: [
+      process.env.FRONTEND,
+      "http://localhost:5173"
+    ],
+    credentials: true,
+  })
+);
 
 app.use(express.urlencoded({ extended: true }));
 
@@ -41,6 +49,8 @@ app.use("/emails", emailRoutes);
 app.use("/photos", photoRoutes);
 app.use("/facts", factRoutes);
 app.use("/admins", adminRoutes);
+app.use("/stats", statsRoutes);
+
 // Ejemplo: POST /emails/send, GET /emails/get, etc.
 
 app.get("/ping", (req, res) => {
@@ -51,5 +61,7 @@ app.get("/ping", (req, res) => {
 server.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
 });
+
+
 
 
