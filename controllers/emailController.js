@@ -4,12 +4,11 @@ import cloudinary from "../config/cloudinary.js";
 import Photo from "../models/photo.js";
 import { Readable } from "stream";
 
-
 dotenv.config();
 
 export const completeRegistration = async (req, res) => {
   try {
-    const { email, name, age, country, story, photoYear, title, width, height, colors } = req.body;
+    const { email, name, age, country, story, photoYear, title } = req.body;
 
     if (!email) {
       return res.status(400).json({ message: "Falta el correo electrónico." });
@@ -64,9 +63,6 @@ export const completeRegistration = async (req, res) => {
       photoYear,
       photos: uploadedUrls,
       subscribedAt: new Date(),
-      width: uploadedAssets[0]?.width || null,
-      height: uploadedAssets[0]?.height || null,
-      colors: uploadedAssets[0]?.colors || [],
     });
 
     await newUser.save();
@@ -85,9 +81,6 @@ export const completeRegistration = async (req, res) => {
       imageUrl: asset.url,
       publicId: asset.publicId,
       year: normalizedYear,
-      width : asset.width || null,
-      height : asset.height || null,
-      colors : asset.colors || []
     }));
 
     await Photo.insertMany(photoDocs);
@@ -209,9 +202,6 @@ export const getUserPhotos = async (req, res) => {
         hidden: Boolean(photo.hidden),
         likes: photo.likes,
         createdAt: photo.createdAt,
-        width: photo.width,
-        height: photo.height,
-        colors: photo.colors
       }));
     } else {
       // Fallback legacy data
@@ -228,9 +218,6 @@ export const getUserPhotos = async (req, res) => {
         description: "",
         hidden: hiddenLegacy.includes(url),
         likes: 0,
-        width: null,
-        height: null,
-        colors: [],
       }));
     }
 
