@@ -30,7 +30,7 @@ export const sendEditMagicLink = async (req, res) => {
       { expiresIn: "2h" }
     );
 
-    const link = `http://localhost:5173/mis-fotos?token=${encodeURIComponent(
+    const link = `http://localhost:5173/userPage?token=${encodeURIComponent(
       token
     )}`;
 
