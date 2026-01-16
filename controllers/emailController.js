@@ -8,7 +8,7 @@ dotenv.config();
 
 export const completeRegistration = async (req, res) => {
   try {
-    const { email, name, age, country, story, photoYear, title } = req.body;
+    const { email, name, age, country, story, year, title } = req.body;
 
     if (!email) {
       return res.status(400).json({ message: "Falta el correo electrónico." });
@@ -21,6 +21,19 @@ export const completeRegistration = async (req, res) => {
     }
 
     
+    const parsedYear =
+      year === null || year === "" || year === undefined
+        ? undefined
+        : Number(year);
+    const currentYear = new Date().getFullYear();
+
+    if (
+      parsedYear !== undefined &&
+      (Number.isNaN(parsedYear) || parsedYear < 1882 || parsedYear > currentYear)
+    ) {
+      return res.status(400).json({ message: "El año no es válido" });
+    }
+
     const existing = await EmailEntry.findOne({ email });
     if (existing) {
       return res
@@ -60,7 +73,7 @@ export const completeRegistration = async (req, res) => {
       age,
       country,
       story,
-      photoYear,
+      year: parsedYear,
       photos: uploadedUrls,
       subscribedAt: new Date(),
     });
@@ -69,7 +82,7 @@ export const completeRegistration = async (req, res) => {
 
     const normalizedTitle = title?.trim() || "Fotografía del Proyecto Amarillo";
     const normalizedDescription = story?.trim() || "";
-    const normalizedYear = photoYear ? Number(photoYear) : undefined;
+    const normalizedYear = parsedYear;
 
     const photoDocs = uploadedAssets.map((asset, index) => ({
       title:

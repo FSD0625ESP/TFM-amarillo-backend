@@ -114,17 +114,33 @@ export const addPhoto = async (req, res) => {
       return res.status(400).json({ message: "Faltan campos obligatorios" });
     }
 
-    const newPhoto = await Photo.create({
+    const parsedYear =
+      year === null || year === "" || year === undefined ? undefined : Number(year);
+    const currentYear = new Date().getFullYear();
+
+    if (
+      parsedYear !== undefined &&
+      (Number.isNaN(parsedYear) || parsedYear < 1882 || parsedYear > currentYear)
+    ) {
+      return res.status(400).json({ message: "El año no es válido" });
+    }
+
+    const newPhotoData = {
       title,
       description,
       imageUrl,
       publicId,
-      year,
       owner,
       likes: likes || 0,
       hidden: false,
       hideReason: "",
-    });
+    };
+
+    if (parsedYear !== undefined) {
+      newPhotoData.year = parsedYear;
+    }
+
+    const newPhoto = await Photo.create(newPhotoData);
 
     res.status(201).json(newPhoto);
   } catch (error) {
@@ -152,13 +168,21 @@ export const updatePhoto = async (req, res) => {
     }
 
     if (year !== undefined) {
-      if (year === null || year === "") {
+      const parsedYear =
+        year === null || year === "" ? undefined : Number(year);
+      const currentYear = new Date().getFullYear();
+
+      if (
+        parsedYear !== undefined &&
+        (Number.isNaN(parsedYear) || parsedYear < 1882 || parsedYear > currentYear)
+      ) {
+        return res.status(400).json({ message: "El año no es válido" });
+      }
+
+      if (parsedYear === undefined) {
         photo.year = undefined;
       } else {
-        const parsedYear = Number(year);
-        if (!Number.isNaN(parsedYear)) {
-          photo.year = parsedYear;
-        }
+        photo.year = parsedYear;
       }
     }
 
