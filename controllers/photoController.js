@@ -95,9 +95,36 @@ const enrichPhotosWithOwners = async (photoDocs) => {
 // 📸 Obtener todas las fotos
 export const getAllPhotos = async (req, res) => {
   try {
-    const photos = await Photo.find({ hidden: false })
-      .sort({ createdAt: -1 })
-      .lean();
+    const { country, year, sortBy } = req.query;
+
+    const filter = { hidden: false };
+
+    if (country) {
+      const normalizedCountry = country.toString().trim();
+      const countryRegex = new RegExp(`^${normalizedCountry}$`, "i");
+      const owners = await EmailEntry.find({ country: countryRegex })
+        .select("_id")
+        .lean();
+      const ownerIds = owners.map((owner) => owner._id);
+
+      filter.$or = [
+        { country: countryRegex },
+        ...(ownerIds.length ? [{ owner: { $in: ownerIds } }] : []),
+      ];
+    }
+
+    if (year) {
+      const parsedYear = Number(year);
+      if (!Number.isNaN(parsedYear)) {
+        filter.year = parsedYear;
+      }
+    }
+
+    let sortOptions = { createdAt: -1 };
+    if (sortBy === "likes") sortOptions = { likes: -1 };
+    if (sortBy === "oldest") sortOptions = { createdAt: 1 };
+
+    const photos = await Photo.find(filter).sort(sortOptions).lean();
     const formattedPhotos = await enrichPhotosWithOwners(photos);
     res.status(200).json(formattedPhotos);
   } catch (error) {
@@ -125,6 +152,14 @@ export const addPhoto = async (req, res) => {
       return res.status(400).json({ message: "El año no es válido" });
     }
 
+    let ownerCountry = null;
+    if (owner) {
+      const userOwner = await EmailEntry.findById(owner);
+      if (userOwner && userOwner.country) {
+        ownerCountry = userOwner.country;
+      }
+    }
+
     const newPhotoData = {
       title,
       description,
@@ -134,6 +169,7 @@ export const addPhoto = async (req, res) => {
       likes: likes || 0,
       hidden: false,
       hideReason: "",
+      country: ownerCountry,
     };
 
     if (parsedYear !== undefined) {

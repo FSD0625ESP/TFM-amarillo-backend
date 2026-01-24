@@ -34,6 +34,11 @@ export const completeRegistration = async (req, res) => {
       return res.status(400).json({ message: "El año no es válido" });
     }
 
+    const normalizedCountry =
+      typeof country === "string" && country.trim()
+        ? country.trim().toUpperCase()
+        : "";
+
     const existing = await EmailEntry.findOne({ email });
     if (existing) {
       return res
@@ -71,7 +76,7 @@ export const completeRegistration = async (req, res) => {
       email,
       name,
       age,
-      country,
+      country: normalizedCountry,
       story,
       year: parsedYear,
       photos: uploadedUrls,
@@ -94,6 +99,7 @@ export const completeRegistration = async (req, res) => {
       imageUrl: asset.url,
       publicId: asset.publicId,
       year: normalizedYear,
+      country: normalizedCountry || null,
     }));
 
     await Photo.insertMany(photoDocs);
