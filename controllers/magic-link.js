@@ -1,60 +1,86 @@
+// controllers/magic-link.js
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
-import { transporter } from "../config/nodemailer.js";
-import { render } from "@react-email/render";
 import React from "react";
-import VerificationEmail from "../models/emails/TokenEmail.js";
+import { render } from "@react-email/render";
+
 import EmailEntry from "../models/EmailEntry.js";
+import VerificationEmail from "../models/emails/VerificationEmail.js";
+import EditPhotosEmail from "../models/emails/EmailEdition.js";
+import { sendBrevoEmail } from "../services/brevo.js"; // 👈 importante
 
 dotenv.config();
 
-export const sendMagicLink = async (req, res) => {
+export const sendSmartMagicLink = async (req, res) => {
   try {
     const { email } = req.body;
-
     if (!email) {
-      return res.status(400).json({ message: "El correo es requerido." });
+      return res.status(400).json({ message: "El email es requerido." });
     }
 
-    // 🔍 1️⃣ VERIFICAR PRIMERO si el correo ya existe
-    const existing = await EmailEntry.findOne({ email });
+    const normalizedEmail = email.toLowerCase();
 
-    if (existing) {
-      return res.status(409).json({
-        message: "Este correo ya está registrado.",
-        alreadyRegistered: true,
+    const existingEntry = await EmailEntry.findOne({
+      email: normalizedEmail,
+    });
+
+    // 🔵 NO existe → REGISTRO
+    if (!existingEntry) {
+      const token = jwt.sign(
+        { email: normalizedEmail, action: "register" },
+        process.env.JWT_SECRET,
+        { expiresIn: "2h" }
+      );
+
+      const link = `http://localhost:5173/register?token=${encodeURIComponent(
+        token
+      )}`;
+
+      const html = await render(
+        React.createElement(VerificationEmail, {
+          verificationLink: link,
+        })
+      );
+
+      await sendBrevoEmail({
+        to: normalizedEmail,
+        subject: "Completa tu registro",
+        html,
+      });
+
+      return res.status(200).json({
+        message: "Te enviamos un enlace para completar tu registro.",
+        mode: "register",
       });
     }
 
-    // 🔑 2️⃣ Generar token SOLO si no existe
+    // 🟢 YA existe → EDICIÓN
     const token = jwt.sign(
-      { email, action: "register" },
+      { email: normalizedEmail, action: "edit" },
       process.env.JWT_SECRET,
       { expiresIn: "2h" }
     );
 
-    const link = `http://localhost:5173/register?token=${encodeURIComponent(
+    const link = `http://localhost:5173/userPage?token=${encodeURIComponent(
       token
     )}`;
 
-    // 📧 3️⃣ Renderizar email
     const html = await render(
-      React.createElement(VerificationEmail, { verificationLink: link })
+      React.createElement(EditPhotosEmail, { link })
     );
 
-    // 📬 4️⃣ Enviar correo
-    await transporter.sendMail({
-      from: `"Equipo Amarillo 💛" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "Tu enlace mágico de registro",
+    await sendBrevoEmail({
+      to: normalizedEmail,
+      subject: "Accede a tus fotos",
       html,
     });
 
     return res.status(200).json({
-      message: "Enlace mágico enviado.",
+      message: "Te enviamos un enlace para ver y editar tus fotos.",
+      mode: "edit",
     });
   } catch (error) {
-    console.error("❌ Error en sendMagicLink:", error);
+    console.error("❌ Error en sendSmartMagicLink:", error);
     return res.status(500).json({ message: "Error interno." });
   }
 };

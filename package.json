@@ -11,6 +11,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@getbrevo/brevo": "^3.0.1",
     "@react-email/render": "^2.0.0",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.8.0",
@@ -22,7 +23,6 @@
     "mongodb": "^6.20.0",
     "mongoose": "^8.19.0",
     "multer": "^2.0.2",
-    "nodemailer": "^7.0.9",
     "nodemon": "^3.1.10",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
