@@ -11,6 +11,7 @@ import {
   getAllPhotosAdmin,
   updatePhoto,
 } from "../controllers/photoController.js";
+import { authUser } from "../middleware/authUser.js";
 
 const router = express.Router();
 
@@ -27,7 +28,7 @@ router.put("/:id/hide", hidePhoto);
 router.put("/:id/unhide", unhidePhoto);
 
 router.put("/:id", updatePhoto);         // Actualizar datos
-router.patch("/:id/like", likePhoto);    // Dar like
+router.patch("/:id/like", authUser, likePhoto);    // Dar like
 router.delete("/:id", deletePhoto);      // Borrar
 
 router.get("/all", getAllPhotosAdmin);
