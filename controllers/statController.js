@@ -69,3 +69,60 @@ export const getTopCountries = async (_req, res) => {
     res.status(500).json({ message: "Error obteniendo top países" });
   }
 };
+
+export const getCountries = async (_req, res) => {
+  try {
+    const pipeline = [
+      { $match: { hidden: false } },
+      {
+        $lookup: {
+          from: "emailentries",
+          localField: "owner",
+          foreignField: "_id",
+          as: "ownerDoc",
+        },
+      },
+      {
+        $addFields: {
+          ownerCountry: {
+            $ifNull: [{ $arrayElemAt: ["$ownerDoc.country", 0] }, null],
+          },
+        },
+      },
+      {
+        $project: {
+          country: { $ifNull: ["$country", "$ownerCountry"] },
+        },
+      },
+      { $match: { country: { $ne: null, $ne: "" } } },
+      { $group: { _id: { $toUpper: "$country" } } },
+      { $sort: { _id: 1 } },
+      { $project: { _id: 0, country: "$_id" } },
+    ];
+
+    const countries = await Photo.aggregate(pipeline);
+    res.json({ countries: countries.map((item) => item.country) });
+  } catch (error) {
+    console.error("Error obteniendo países:", error);
+    res.status(500).json({ message: "Error obteniendo países" });
+  }
+};
+
+export const getPhotoYears = async (_req, res) => {
+  try {
+    const years = await Photo.distinct("year", {
+      hidden: false,
+      year: { $ne: null },
+    });
+
+    const normalized = years
+      .map((year) => Number(year))
+      .filter((year) => Number.isFinite(year))
+      .sort((a, b) => b - a);
+
+    res.json({ years: normalized });
+  } catch (error) {
+    console.error("Error obteniendo años:", error);
+    res.status(500).json({ message: "Error obteniendo años" });
+  }
+};

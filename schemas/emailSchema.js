@@ -25,7 +25,7 @@ export const emailSchema = [
     .optional()
     .toBoolean(),
 
-  body('photoYear')
+  body('year')
     .optional()
     .toInt()
     .isInt({ min: 1882, max: new Date().getFullYear() })

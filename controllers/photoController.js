@@ -38,7 +38,7 @@ const buildOwnerLookup = async (photoDocs) => {
   if (!ownerIds.length) return new Map();
 
   const owners = await EmailEntry.find({ _id: { $in: ownerIds } })
-    .select("email name")
+    .select("email name country")
     .lean();
 
   return owners.reduce((map, owner) => {
@@ -63,10 +63,13 @@ const formatPhotoResponse = (photoDoc, ownerLookup) => {
     ownerInfo = { email: ownerValue.trim() };
   }
 
+  const ownerCountry = ownerInfo?.country ?? null;
+
   return {
     ...photo,
     owner: ownerInfo,
     ownerEmail: ownerInfo?.email ?? null,
+    country: photo?.country ?? ownerCountry,
   };
 };
 
@@ -95,9 +98,36 @@ const enrichPhotosWithOwners = async (photoDocs) => {
 // 📸 Obtener todas las fotos
 export const getAllPhotos = async (req, res) => {
   try {
-    const photos = await Photo.find({ hidden: false })
-      .sort({ createdAt: -1 })
-      .lean();
+    const { country, year, sortBy } = req.query;
+
+    const filter = { hidden: false };
+
+    if (country) {
+      const normalizedCountry = country.toString().trim();
+      const countryRegex = new RegExp(`^${normalizedCountry}$`, "i");
+      const owners = await EmailEntry.find({ country: countryRegex })
+        .select("_id")
+        .lean();
+      const ownerIds = owners.map((owner) => owner._id);
+
+      filter.$or = [
+        { country: countryRegex },
+        ...(ownerIds.length ? [{ owner: { $in: ownerIds } }] : []),
+      ];
+    }
+
+    if (year) {
+      const parsedYear = Number(year);
+      if (!Number.isNaN(parsedYear)) {
+        filter.year = parsedYear;
+      }
+    }
+
+    let sortOptions = { createdAt: -1 };
+    if (sortBy === "likes") sortOptions = { likes: -1 };
+    if (sortBy === "oldest") sortOptions = { createdAt: 1 };
+
+    const photos = await Photo.find(filter).sort(sortOptions).lean();
     const formattedPhotos = await enrichPhotosWithOwners(photos);
     res.status(200).json(formattedPhotos);
   } catch (error) {
@@ -114,17 +144,42 @@ export const addPhoto = async (req, res) => {
       return res.status(400).json({ message: "Faltan campos obligatorios" });
     }
 
-    const newPhoto = await Photo.create({
+    const parsedYear =
+      year === null || year === "" || year === undefined ? undefined : Number(year);
+    const currentYear = new Date().getFullYear();
+
+    if (
+      parsedYear !== undefined &&
+      (Number.isNaN(parsedYear) || parsedYear < 1882 || parsedYear > currentYear)
+    ) {
+      return res.status(400).json({ message: "El año no es válido" });
+    }
+
+    let ownerCountry = null;
+    if (owner) {
+      const userOwner = await EmailEntry.findById(owner);
+      if (userOwner && userOwner.country) {
+        ownerCountry = userOwner.country;
+      }
+    }
+
+    const newPhotoData = {
       title,
       description,
       imageUrl,
       publicId,
-      year,
       owner,
       likes: likes || 0,
       hidden: false,
       hideReason: "",
-    });
+      country: ownerCountry,
+    };
+
+    if (parsedYear !== undefined) {
+      newPhotoData.year = parsedYear;
+    }
+
+    const newPhoto = await Photo.create(newPhotoData);
 
     res.status(201).json(newPhoto);
   } catch (error) {
@@ -152,13 +207,21 @@ export const updatePhoto = async (req, res) => {
     }
 
     if (year !== undefined) {
-      if (year === null || year === "") {
+      const parsedYear =
+        year === null || year === "" ? undefined : Number(year);
+      const currentYear = new Date().getFullYear();
+
+      if (
+        parsedYear !== undefined &&
+        (Number.isNaN(parsedYear) || parsedYear < 1882 || parsedYear > currentYear)
+      ) {
+        return res.status(400).json({ message: "El año no es válido" });
+      }
+
+      if (parsedYear === undefined) {
         photo.year = undefined;
       } else {
-        const parsedYear = Number(year);
-        if (!Number.isNaN(parsedYear)) {
-          photo.year = parsedYear;
-        }
+        photo.year = parsedYear;
       }
     }
 
@@ -182,12 +245,42 @@ export const updatePhoto = async (req, res) => {
 export const likePhoto = async (req, res) => {
   try {
     const { id } = req.params;
-    const photo = await Photo.findById(id);
-    if (!photo) return res.status(404).json({ message: "Foto no encontrada" });
+    const userId = req.user?.userId;
 
-    photo.likes += 1;
-    await photo.save();
-    res.status(200).json({ message: "Like agregado", likes: photo.likes });
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(401).json({ message: "No autorizado." });
+    }
+
+    const userExists = await EmailEntry.exists({ _id: userId });
+    if (!userExists) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    const likedPhoto = await Photo.findOneAndUpdate(
+      { _id: id, likedBy: { $ne: userId } },
+      { $addToSet: { likedBy: userId }, $inc: { likes: 1 } },
+      { new: true }
+    );
+
+    if (likedPhoto) {
+      return res
+        .status(200)
+        .json({ message: "Like agregado", likes: likedPhoto.likes, liked: true });
+    }
+
+    const unlikedPhoto = await Photo.findOneAndUpdate(
+      { _id: id, likedBy: userId },
+      { $pull: { likedBy: userId }, $inc: { likes: -1 } },
+      { new: true }
+    );
+
+    if (unlikedPhoto) {
+      return res
+        .status(200)
+        .json({ message: "Like eliminado", likes: unlikedPhoto.likes, liked: false });
+    }
+
+    return res.status(404).json({ message: "Foto no encontrada" });
   } catch (error) {
     res.status(500).json({ message: "Error al dar like", error });
   }
