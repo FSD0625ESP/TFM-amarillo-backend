@@ -10,6 +10,7 @@ const photoSchema = new mongoose.Schema({
   }, //el owner ID tiene que ser una referencia de la tabla Users
   imageUrl: { type: String, required: true },
   publicId: { type: String }, // ID de Cloudinary
+  dominantColor: { type: [Number], default: [] },
   likes: { type: Number, default: 0 },
   likedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "EmailEntry" }],
    year: { type: Number },// para que el usuario elija el año

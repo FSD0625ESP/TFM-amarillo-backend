@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import EmailEntry from "../models/EmailEntry.js";
 import cloudinary from "../config/cloudinary.js";
 import Photo from "../models/photo.js";
+import { extractColors } from "../utils/extractColors.js";
 import { Readable } from "stream";
 
 dotenv.config();
@@ -48,8 +49,8 @@ export const completeRegistration = async (req, res) => {
     }
 
     
-    const uploadPromises = req.files.map((file) => {
-      return new Promise((resolve, reject) => {
+    const uploadAsset = async (file) =>
+      new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
           { folder: "proyecto_amarillo" },
           (error, result) => {
@@ -67,9 +68,14 @@ export const completeRegistration = async (req, res) => {
         bufferStream.push(null);
         bufferStream.pipe(stream);
       });
-    });
 
-    const uploadedAssets = await Promise.all(uploadPromises);
+    const uploadedAssets = await Promise.all(
+      req.files.map(async (file) => {
+        const colors = await extractColors(file.buffer, 1);
+        const asset = await uploadAsset(file);
+        return { ...asset, colors };
+      })
+    );
     const uploadedUrls = uploadedAssets.map((asset) => asset.url);
 
    
@@ -101,6 +107,7 @@ export const completeRegistration = async (req, res) => {
       publicId: asset.publicId,
       year: normalizedYear,
       country: normalizedCountry || null,
+      dominantColor: Array.isArray(asset.colors) ? asset.colors[0] : [],
     }));
 
     await Photo.insertMany(photoDocs);
@@ -236,6 +243,7 @@ export const getUserPhotos = async (req, res) => {
         likes: photo.likes,
         createdAt: photo.createdAt,
         country: photo.country ?? user.country ?? null,
+        dominantColor: photo.dominantColor || [],
       }));
     } else {
       // Fallback legacy data
@@ -253,6 +261,7 @@ export const getUserPhotos = async (req, res) => {
         hidden: hiddenLegacy.includes(url),
         likes: 0,
         country: user.country ?? null,
+        dominantColor: [],
       }));
     }
 

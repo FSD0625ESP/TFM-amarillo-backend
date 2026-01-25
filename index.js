@@ -12,6 +12,7 @@ import photoRoutes from "./routes/photosRoutes.js";
 import factRoutes from "./routes/factRoutes.js";
 import statsRoutes from "./routes/statsRoutes.js";
 import adminRoutes from "./routes/admins.js";
+import mosaicRoutes from "./routes/mosaicRoutes.js";
 // (Puedes agregar más rutas aquí: factsRoutes, uploadRoutes, etc.)
 
 dotenv.config();
@@ -50,6 +51,7 @@ app.use("/photos", photoRoutes);
 app.use("/facts", factRoutes);
 app.use("/admins", adminRoutes);
 app.use("/stats", statsRoutes);
+app.use("/mosaic", mosaicRoutes);
 
 // Ejemplo: POST /emails/send, GET /emails/get, etc.
 
@@ -61,7 +63,6 @@ app.get("/ping", (req, res) => {
 server.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
 });
-
 
 
 
