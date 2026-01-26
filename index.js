@@ -13,6 +13,7 @@ import factRoutes from "./routes/factRoutes.js";
 import statsRoutes from "./routes/statsRoutes.js";
 import adminRoutes from "./routes/admins.js";
 import mosaicRoutes from "./routes/mosaicRoutes.js";
+import { startMosaicScheduler } from "./utils/mosaicScheduler.js";
 // (Puedes agregar más rutas aquí: factsRoutes, uploadRoutes, etc.)
 
 dotenv.config();
@@ -42,7 +43,10 @@ app.use(express.json());
 // Conexión a MongoDB
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ Conectado a MongoDB"))
+  .then(() => {
+    console.log("✅ Conectado a MongoDB");
+    startMosaicScheduler();
+  })
   .catch((err) => console.error("❌ Error de conexión:", err));
 
 // Rutas
@@ -63,6 +67,5 @@ app.get("/ping", (req, res) => {
 server.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
 });
-
 
 

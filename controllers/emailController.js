@@ -52,7 +52,11 @@ export const completeRegistration = async (req, res) => {
     const uploadAsset = async (file) =>
       new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
-          { folder: "proyecto_amarillo" },
+          {
+            folder: "proyecto_amarillo",
+            fetch_format: "auto",
+            transformation: [{ quality: "auto" }],
+          },
           (error, result) => {
             if (error) reject(error);
             else
