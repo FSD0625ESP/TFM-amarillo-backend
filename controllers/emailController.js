@@ -268,3 +268,33 @@ export const getUserPhotos = async (req, res) => {
     });
   }
 };
+
+export const getUserPhotosByEmail = async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email requerido" });
+    }
+
+    const user = await EmailEntry.findOne({ email }).lean();
+
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    const photos = await Photo.find({ owner: user._id })
+      .select("imageUrl title description likes year country")
+      .lean();
+
+    return res.status(200).json({
+      email: user.email,
+      name: user.name,          // ✅ AQUÍ
+      photos,                   // ✅ likes incluidos
+    });
+  } catch (error) {
+    console.error("❌ Error getUserPhotosByEmail:", error);
+    res.status(500).json({ message: "Error interno" });
+  }
+};
+

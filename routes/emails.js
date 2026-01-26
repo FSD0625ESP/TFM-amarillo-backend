@@ -6,7 +6,10 @@ import {
   getEmail,
   deleteEmail,
   getUserPhotos,
-  updateEmailEntry
+  updateEmailEntry,
+  // getMyPhotos,
+  getUserPhotosByEmail
+
 } from "../controllers/emailController.js";
 
 import { sendSmartMagicLink } from "../controllers/magic-link.js";
@@ -27,7 +30,8 @@ router.post("/complete", upload.array("photos"), completeRegistration);
 // 👤 Emails
 router.get("/", getEmail);
 router.put("/:id", updateEmailEntry);
-router.get("/:id/photos", getUserPhotos);
 router.delete("/:id", deleteEmail);
+router.get("/me/photos", getUserPhotosByEmail);
+router.get("/:id/photos", getUserPhotos);
 
 export default router;
