@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import jwt from "jsonwebtoken";
 import EmailEntry from "../models/EmailEntry.js";
 import cloudinary from "../config/cloudinary.js";
 import Photo from "../models/photo.js";
@@ -33,6 +34,11 @@ export const completeRegistration = async (req, res) => {
     ) {
       return res.status(400).json({ message: "El año no es válido" });
     }
+
+    const normalizedCountry =
+      typeof country === "string" && country.trim()
+        ? country.trim().toUpperCase()
+        : "";
 
     const existing = await EmailEntry.findOne({ email });
     if (existing) {
@@ -71,7 +77,7 @@ export const completeRegistration = async (req, res) => {
       email,
       name,
       age,
-      country,
+      country: normalizedCountry,
       story,
       year: parsedYear,
       photos: uploadedUrls,
@@ -94,13 +100,27 @@ export const completeRegistration = async (req, res) => {
       imageUrl: asset.url,
       publicId: asset.publicId,
       year: normalizedYear,
+      country: normalizedCountry || null,
     }));
 
     await Photo.insertMany(photoDocs);
 
+    const token = jwt.sign(
+      { userId: newUser._id.toString(), email: newUser.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
     return res.status(200).json({
       message: "Registro completado con éxito.",
       colaboradorNum: await EmailEntry.countDocuments(),
+      token,
+      user: {
+        _id: newUser._id,
+        email: newUser.email,
+        name: newUser.name,
+        country: newUser.country,
+      },
     });
   } catch (error) {
     console.error("❌ Error en completeRegistration:", error);
@@ -215,6 +235,7 @@ export const getUserPhotos = async (req, res) => {
         hidden: Boolean(photo.hidden),
         likes: photo.likes,
         createdAt: photo.createdAt,
+        country: photo.country ?? user.country ?? null,
       }));
     } else {
       // Fallback legacy data
@@ -231,6 +252,7 @@ export const getUserPhotos = async (req, res) => {
         description: "",
         hidden: hiddenLegacy.includes(url),
         likes: 0,
+        country: user.country ?? null,
       }));
     }
 
