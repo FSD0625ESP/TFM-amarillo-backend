@@ -213,7 +213,7 @@ const renderMosaicInternal = async ({
   mosaicKey = "default",
   outputWidth,
   outputHeight,
-  folder = "Mosaic",
+  folder = "Mosaic/renders",
   publicIdPrefix = "mosaic",
   format = "jpg",
   concurrency = 6,
@@ -354,7 +354,7 @@ export const renderMosaic = async (req, res) => {
       mosaicKey = "default",
       outputWidth,
       outputHeight,
-      folder = "Mosaic",
+      folder = "Mosaic/renders",
       publicIdPrefix = "mosaic",
       format = "jpg",
       concurrency = 6,
@@ -507,7 +507,7 @@ export const uploadMainImage = async (req, res) => {
       return res.status(400).json({ message: "Archivo requerido." });
     }
 
-    const { folder = "Mosaic" } = req.body;
+    const { folder = "Mosaic/main" } = req.body;
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const publicId = `main-image-${timestamp}`;
 
@@ -561,7 +561,7 @@ export const runMosaicPipelineFromConfig = async (configDoc) => {
     mosaicKey,
     outputWidth: mosaicSize,
     outputHeight: mosaicSize,
-    folder: "Mosaic",
+    folder: "Mosaic/renders",
     publicIdPrefix: "mosaic",
     format: "jpg",
     concurrency: 6,
