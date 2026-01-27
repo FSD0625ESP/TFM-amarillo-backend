@@ -4,6 +4,7 @@ import EmailEntry from "../models/EmailEntry.js";
 import cloudinary, { cloudinaryUploadOptions } from "../config/cloudinary.js";
 import Photo from "../models/photo.js";
 import { Readable } from "stream";
+import { getPngUrl } from "./cloudinaryUrls.js";
 
 dotenv.config();
 
@@ -21,7 +22,6 @@ export const completeRegistration = async (req, res) => {
         .json({ message: "Debes subir al menos una fotografía." });
     }
 
-    
     const parsedYear =
       year === null || year === "" || year === undefined
         ? undefined
@@ -30,7 +30,9 @@ export const completeRegistration = async (req, res) => {
 
     if (
       parsedYear !== undefined &&
-      (Number.isNaN(parsedYear) || parsedYear < 1882 || parsedYear > currentYear)
+      (Number.isNaN(parsedYear) ||
+        parsedYear < 1882 ||
+        parsedYear > currentYear)
     ) {
       return res.status(400).json({ message: "El año no es válido" });
     }
@@ -47,7 +49,6 @@ export const completeRegistration = async (req, res) => {
         .json({ message: "Este correo ya completó el registro." });
     }
 
-    
     const uploadPromises = req.files.map((file) => {
       return new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
@@ -56,7 +57,7 @@ export const completeRegistration = async (req, res) => {
             if (error) reject(error);
             else
               resolve({
-                url: result.secure_url,
+                url: getPngUrl(result.public_id),
                 publicId: result.public_id,
               });
           }
@@ -72,7 +73,6 @@ export const completeRegistration = async (req, res) => {
     const uploadedAssets = await Promise.all(uploadPromises);
     const uploadedUrls = uploadedAssets.map((asset) => asset.url);
 
-   
     const newUser = new EmailEntry({
       email,
       name,
@@ -137,7 +137,7 @@ export const getEmail = async (req, res) => {
 
     const enriched = users.map((u) => ({
       ...u,
-      photosCount: Array.isArray(u.photos) ? u.photos.length : 0
+      photosCount: Array.isArray(u.photos) ? u.photos.length : 0,
     }));
 
     return res.status(200).json(enriched);
@@ -182,7 +182,11 @@ export const updateEmailEntry = async (req, res) => {
       return res.status(404).json({ message: "Usuario no encontrado." });
     }
 
-    if (!country || typeof country !== "string" || country.trim().length === 0) {
+    if (
+      !country ||
+      typeof country !== "string" ||
+      country.trim().length === 0
+    ) {
       return res.status(400).json({ message: "El país es obligatorio." });
     }
 
@@ -289,8 +293,8 @@ export const getUserPhotosByEmail = async (req, res) => {
 
     return res.status(200).json({
       email: user.email,
-      name: user.name,          // ✅ AQUÍ
-      photos,                   // ✅ likes incluidos
+      name: user.name, // ✅ AQUÍ
+      photos, // ✅ likes incluidos
     });
   } catch (error) {
     console.error("❌ Error getUserPhotosByEmail:", error);
