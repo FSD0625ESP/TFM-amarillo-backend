@@ -7,6 +7,17 @@ El funcionamiento debería ser el siguiente:
 
 ```js
 
+    const sharp = require('sharp');
+    const mainImageUrl = 'https://example.com/main-image.jpg';
+    
+    // Fetch main image
+    const mainImageResponse = await fetch(mainImageUrl);
+    const mainImageBuffer = Buffer.from(await mainImageResponse.arrayBuffer());
+    
+    // Get main image metadata
+    const mainImage = sharp(mainImageBuffer);
+    const { width: mainWidth, height: mainHeight } = await mainImage.metadata();
+
     // Analyze main image grid
     const mosaicGrid = [];
     const mainImageWidth = 1000 //aquí tenéis que definir el ancho de vuestra imagen principal

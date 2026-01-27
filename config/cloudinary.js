@@ -8,4 +8,18 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+const defaultImageFormat = "jpg";
+const defaultImageQuality = process.env.CLOUDINARY_IMAGE_QUALITY || "auto:good";
+const defaultFolder = process.env.CLOUDINARY_FOLDER || "proyecto_amarillo";
+
+export const cloudinaryUploadOptions = {
+  folder: defaultFolder,
+  format: defaultImageFormat,
+  transformation: [
+    {
+      quality: defaultImageQuality,
+    },
+  ],
+};
+
 export default cloudinary;

@@ -1,29 +1,37 @@
 import express from "express";
 import multer from "multer";
+
 import {
   completeRegistration,
   getEmail,
   deleteEmail,
   getUserPhotos,
   updateEmailEntry,
+  // getMyPhotos,
+  getUserPhotosByEmail
+
 } from "../controllers/emailController.js";
 
-import { sendMagicLink } from "../controllers/magic-link.js";
+import { sendSmartMagicLink } from "../controllers/magic-link.js";
 import { verifyToken } from "../controllers/verify-token.js";
-import { sendEditMagicLink } from "../controllers/sendEditMagicLink.js";
+
 const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
 
+// 🔑 Magic link inteligente (registro o edición)
+router.post("/send-smart-link", sendSmartMagicLink);
 
-
-router.post("/send-magic-link", sendMagicLink);
-router.post("/send-edit-link", sendEditMagicLink);
+// 🔐 Verificar token
 router.get("/verify-token", verifyToken);
+
+// 📸 Registro
 router.post("/complete", upload.array("photos"), completeRegistration);
+
+// 👤 Emails
 router.get("/", getEmail);
 router.put("/:id", updateEmailEntry);
-router.get("/:id/photos", getUserPhotos);
 router.delete("/:id", deleteEmail);
-
+router.get("/me/photos", getUserPhotosByEmail);
+router.get("/:id/photos", getUserPhotos);
 
 export default router;
