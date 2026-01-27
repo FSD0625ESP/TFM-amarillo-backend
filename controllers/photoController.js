@@ -138,7 +138,16 @@ export const getAllPhotos = async (req, res) => {
 // ➕ Subir una nueva foto
 export const addPhoto = async (req, res) => {
   try {
-    const { title, description, imageUrl, publicId, year, owner, likes } = req.body;
+    const {
+      title,
+      description,
+      imageUrl,
+      publicId,
+      year,
+      owner,
+      likes,
+      dominantColor,
+    } = req.body;
 
     if (!title || !imageUrl) {
       return res.status(400).json({ message: "Faltan campos obligatorios" });
@@ -174,6 +183,10 @@ export const addPhoto = async (req, res) => {
       hideReason: "",
       country: ownerCountry,
     };
+
+    if (Array.isArray(dominantColor)) {
+      newPhotoData.dominantColor = dominantColor;
+    }
 
     if (parsedYear !== undefined) {
       newPhotoData.year = parsedYear;
