@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import jwt from "jsonwebtoken";
 import EmailEntry from "../models/EmailEntry.js";
-import cloudinary from "../config/cloudinary.js";
+import cloudinary, { cloudinaryUploadOptions } from "../config/cloudinary.js";
 import Photo from "../models/photo.js";
 import { Readable } from "stream";
 
@@ -51,7 +51,7 @@ export const completeRegistration = async (req, res) => {
     const uploadPromises = req.files.map((file) => {
       return new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
-          { folder: "proyecto_amarillo" },
+          cloudinaryUploadOptions,
           (error, result) => {
             if (error) reject(error);
             else
@@ -297,4 +297,3 @@ export const getUserPhotosByEmail = async (req, res) => {
     res.status(500).json({ message: "Error interno" });
   }
 };
-
