@@ -434,6 +434,7 @@ export const updateMosaicConfig = async (req, res) => {
       mosaicSize = 2000,
       allowReuse = true,
       intervalHours = 24,
+      refreshSeconds = 30,
     } = req.body;
 
     if (enabled && !mainImageUrl) {
@@ -451,6 +452,7 @@ export const updateMosaicConfig = async (req, res) => {
       mosaicSize: Number(mosaicSize) || 2000,
       allowReuse: Boolean(allowReuse),
       intervalHours: Math.max(1, Number(intervalHours) || 24),
+      refreshSeconds: Math.max(0, Number(refreshSeconds) || 0),
       updatedAt: new Date(),
     };
 

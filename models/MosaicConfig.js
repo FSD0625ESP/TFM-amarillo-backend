@@ -9,6 +9,7 @@ const mosaicConfigSchema = new mongoose.Schema({
   mosaicSize: { type: Number, default: 2000 },
   allowReuse: { type: Boolean, default: true },
   intervalHours: { type: Number, default: 24 },
+  refreshSeconds: { type: Number, default: 30 },
   lastRunAt: { type: Date, default: null },
   updatedAt: { type: Date, default: Date.now },
   createdAt: { type: Date, default: Date.now },
