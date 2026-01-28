@@ -58,7 +58,7 @@ export const completeRegistration = async (req, res) => {
             if (error) reject(error);
             else
               resolve({
-                url: getPngUrl(result.public_id),
+                url: result.secure_url, //getPngUrl(result.public_id),
                 publicId: result.public_id,
               });
           }
