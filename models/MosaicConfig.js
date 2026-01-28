@@ -8,6 +8,8 @@ const mosaicConfigSchema = new mongoose.Schema({
   mosaicKey: { type: String, default: "default" },
   mosaicSize: { type: Number, default: 2000 },
   allowReuse: { type: Boolean, default: true },
+  reuseAfterExhaustion: { type: Boolean, default: false },
+  concurrency: { type: Number, default: 3 },
   intervalHours: { type: Number, default: 24 },
   refreshSeconds: { type: Number, default: 30 },
   lastRunAt: { type: Date, default: null },
