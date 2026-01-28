@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 2,
+            "activePatchIndex": 4,
             "patches": [
                 {
                     "date": 1769550561265,
@@ -16,6 +16,14 @@
                 {
                     "date": 1769550984465,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -57,9 +57,9 @@\n           (error, result) => {\n             if (error) reject(error);\n             else\n               resolve({\n-                url: result., //getPngUrl(result.public_id),\n+                url: result.secure_url, //getPngUrl(result.public_id),\n                 publicId: result.public_id,\n               });\n           }\n         );\n"
+                },
+                {
+                    "date": 1769562312657,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -334,9 +334,9 @@\n \n     const uploadPromises = req.files.map((file) => {\n       return new Promise((resolve, reject) => {\n         const stream = cloudinary.uploader.upload_stream(\n-          { folder: \"proyecto_amarillo\" },\n+          ,\n           (error, result) => {\n             if (error) reject(error);\n             else\n               resolve({\n"
+                },
+                {
+                    "date": 1769562362981,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -334,9 +334,9 @@\n \n     const uploadPromises = req.files.map((file) => {\n       return new Promise((resolve, reject) => {\n         const stream = cloudinary.uploader.upload_stream(\n-          ,\n+          cloudinaryUploadOptions,\n           (error, result) => {\n             if (error) reject(error);\n             else\n               resolve({\n"
                 }
             ],
             "date": 1769550561265,

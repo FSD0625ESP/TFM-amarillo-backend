@@ -307,7 +307,7 @@ export const getUserPhotosByEmail = async (req, res) => {
       story: user.story,
       year: user.year,
       name: user.name,
-      photos,         
+      photos,
     });
   } catch (error) {
     console.error("❌ Error getUserPhotosByEmail:", error);
@@ -335,7 +335,7 @@ export const addPhotosToUser = async (req, res) => {
     const uploadPromises = req.files.map((file) => {
       return new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
-          { folder: "proyecto_amarillo" },
+          cloudinaryUploadOptions,
           (error, result) => {
             if (error) reject(error);
             else

@@ -15,8 +15,15 @@ const defaultFolder = process.env.CLOUDINARY_FOLDER || "proyecto_amarillo";
 export const cloudinaryUploadOptions = {
   folder: defaultFolder,
   format: defaultImageFormat,
+  eager: [
+    {
+      fetch_format: "jpg", // use fetch_format for automatic format
+      quality: "auto", // use quality: 'auto' for automatic quality
+    },
+  ],
   transformation: [
     {
+      format: defaultImageFormat,
       quality: defaultImageQuality,
     },
   ],
