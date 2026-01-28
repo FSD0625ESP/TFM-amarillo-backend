@@ -20,6 +20,16 @@ async function fetchImageBuffer(url) {
   return Buffer.from(arrayBuffer);
 }
 
+const getOptimizedUrl = (url, { width, height } = {}) => {
+  if (!url || !url.includes("/upload/")) return url;
+  const safeWidth = Math.max(1, Math.round(Number(width) || 0));
+  const safeHeight = Math.max(1, Math.round(Number(height) || 0));
+  const sizeParams =
+    safeWidth && safeHeight ? `w_${safeWidth},h_${safeHeight},c_fill,` : "";
+  const transformation = `${sizeParams}q_auto,f_auto,dpr_auto`;
+  return url.replace("/upload/", `/upload/${transformation}/`);
+};
+
 const uploadToCloudinary = (buffer, { folder, publicId, format }) =>
   new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -143,7 +153,11 @@ const generateMainImageTilesInternal = async ({
   return { rows, cols, count: tiles.length };
 };
 
-const matchTilesInternal = async ({ mosaicKey = "default", allowReuse = true }) => {
+const matchTilesInternal = async ({
+  mosaicKey = "default",
+  allowReuse = true,
+  reuseAfterExhaustion = false,
+}) => {
   const tiles = await Tile.find({ mosaicKey }).lean();
   if (!tiles.length) {
     throw createHttpError("No hay tiles para ese mosaicKey.", 404);
@@ -158,10 +172,14 @@ const matchTilesInternal = async ({ mosaicKey = "default", allowReuse = true }) 
     throw createHttpError("No hay fotos con dominantColor.", 404);
   }
 
-  const availablePhotos = allowReuse ? photos : [...photos];
+  const sourcePhotos = photos;
+  let availablePhotos = allowReuse ? photos : [...photos];
   const bulkOps = [];
 
   for (const tile of tiles) {
+    if (!allowReuse && reuseAfterExhaustion && availablePhotos.length === 0) {
+      availablePhotos = [...sourcePhotos];
+    }
     let bestPhoto = null;
     let bestDistance = Number.POSITIVE_INFINITY;
     const tileColor =
@@ -206,7 +224,7 @@ const matchTilesInternal = async ({ mosaicKey = "default", allowReuse = true }) 
     await Tile.bulkWrite(bulkOps);
   }
 
-  return { matched: bulkOps.length, allowReuse };
+  return { matched: bulkOps.length, allowReuse, reuseAfterExhaustion };
 };
 
 const renderMosaicInternal = async ({
@@ -216,7 +234,7 @@ const renderMosaicInternal = async ({
   folder = "Mosaic/renders",
   publicIdPrefix = "mosaic",
   format = "jpg",
-  concurrency = 6,
+  concurrency = 3,
 }) => {
   const tiles = await Tile.find({ mosaicKey }).lean();
   if (!tiles.length) {
@@ -256,7 +274,8 @@ const renderMosaicInternal = async ({
       let inputBuffer;
       if (tile.matchedUrl) {
         try {
-          const imgBuffer = await fetchImageBuffer(tile.matchedUrl);
+          const optimizedUrl = getOptimizedUrl(tile.matchedUrl, { width, height });
+          const imgBuffer = await fetchImageBuffer(optimizedUrl);
           inputBuffer = await sharp(imgBuffer)
             .resize(width, height, { fit: "cover" })
             .toBuffer();
@@ -357,7 +376,7 @@ export const renderMosaic = async (req, res) => {
       folder = "Mosaic/renders",
       publicIdPrefix = "mosaic",
       format = "jpg",
-      concurrency = 6,
+      concurrency = 3,
     } = req.body;
 
     const snapshot = await renderMosaicInternal({
@@ -433,6 +452,8 @@ export const updateMosaicConfig = async (req, res) => {
       mosaicKey = "default",
       mosaicSize = 2000,
       allowReuse = true,
+      reuseAfterExhaustion = false,
+      concurrency = 3,
       intervalHours = 24,
       refreshSeconds = 30,
     } = req.body;
@@ -451,6 +472,8 @@ export const updateMosaicConfig = async (req, res) => {
       mosaicKey: mosaicKey || "default",
       mosaicSize: Number(mosaicSize) || 2000,
       allowReuse: Boolean(allowReuse),
+      reuseAfterExhaustion: Boolean(reuseAfterExhaustion),
+      concurrency: Math.max(1, Math.min(16, Number(concurrency) || 3)),
       intervalHours: Math.max(1, Number(intervalHours) || 24),
       refreshSeconds: Math.max(0, Number(refreshSeconds) || 0),
       updatedAt: new Date(),
@@ -547,6 +570,8 @@ export const runMosaicPipelineFromConfig = async (configDoc) => {
     mosaicKey,
     mosaicSize,
     allowReuse,
+    reuseAfterExhaustion,
+    concurrency,
   } = config;
 
   await generateMainImageTilesInternal({
@@ -557,7 +582,7 @@ export const runMosaicPipelineFromConfig = async (configDoc) => {
     overwrite: true,
   });
 
-  await matchTilesInternal({ mosaicKey, allowReuse });
+  await matchTilesInternal({ mosaicKey, allowReuse, reuseAfterExhaustion });
 
   const snapshot = await renderMosaicInternal({
     mosaicKey,
@@ -566,7 +591,7 @@ export const runMosaicPipelineFromConfig = async (configDoc) => {
     folder: "Mosaic/renders",
     publicIdPrefix: "mosaic",
     format: "jpg",
-    concurrency: 6,
+    concurrency: Math.max(1, Math.min(16, Number(concurrency) || 3)),
   });
 
   config.lastRunAt = new Date();
@@ -585,15 +610,24 @@ const colorDistance = (color1, color2) => {
 
 export const matchTilesToPhotos = async (req, res) => {
   try {
-    const { mosaicKey = "default", allowReuse = true } = req.body;
+    const {
+      mosaicKey = "default",
+      allowReuse = true,
+      reuseAfterExhaustion = false,
+    } = req.body;
 
-    const { matched } = await matchTilesInternal({ mosaicKey, allowReuse });
+    const { matched } = await matchTilesInternal({
+      mosaicKey,
+      allowReuse,
+      reuseAfterExhaustion,
+    });
 
     return res.status(200).json({
       message: "Tiles emparejados correctamente.",
       mosaicKey,
       matched,
       allowReuse,
+      reuseAfterExhaustion,
     });
   } catch (error) {
     console.error("Error al emparejar tiles:", error);
