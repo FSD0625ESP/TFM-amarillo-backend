@@ -34,6 +34,9 @@ export const sendSmartMagicLink = async (req, res) => {
 
       const link = `http://localhost:5173/register?token=${encodeURIComponent(
         token
+
+      // const link = `https://gilded-vacherin-e79d5a.netlify.app/register?token=${encodeURIComponent(
+      //   token
       )}`;
 
       const html = await render(
@@ -61,7 +64,9 @@ export const sendSmartMagicLink = async (req, res) => {
       { expiresIn: "2h" }
     );
 
-    const link = `http://localhost:5173/userPage?token=${encodeURIComponent(
+    // const link = `https://gilded-vacherin-e79d5a.netlify.app/userPage?token=${encodeURIComponent(
+    //   token
+    const link = `http://localhost:5173/auth?token=${encodeURIComponent(
       token
     )}`;
 
