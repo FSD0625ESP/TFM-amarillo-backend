@@ -302,11 +302,77 @@ export const getUserPhotosByEmail = async (req, res) => {
 
     return res.status(200).json({
       email: user.email,
-      name: user.name, // ✅ AQUÍ
-      photos, // ✅ likes incluidos
+      age: user.age,
+      country: user.country,
+      story: user.story,
+      year: user.year,
+      name: user.name,
+      photos,         
     });
   } catch (error) {
     console.error("❌ Error getUserPhotosByEmail:", error);
+    res.status(500).json({ message: "Error interno" });
+  }
+};
+
+export const addPhotosToUser = async (req, res) => {
+  try {
+    const { email, title, description, year } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email requerido" });
+    }
+
+    const user = await EmailEntry.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "Debes subir al menos una foto" });
+    }
+
+    const uploadPromises = req.files.map((file) => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: "proyecto_amarillo" },
+          (error, result) => {
+            if (error) reject(error);
+            else
+              resolve({
+                url: result.secure_url,
+                publicId: result.public_id,
+              });
+          }
+        );
+
+        const bufferStream = new Readable();
+        bufferStream.push(file.buffer);
+        bufferStream.push(null);
+        bufferStream.pipe(stream);
+      });
+    });
+
+    const uploaded = await Promise.all(uploadPromises);
+
+    const photoDocs = uploaded.map((asset) => ({
+      title: title?.trim() || "Nueva fotografía",
+      description: description?.trim() || "",
+      owner: user._id,
+      imageUrl: asset.url,
+      publicId: asset.publicId,
+      year: year ? Number(year) : undefined,
+      country: user.country,
+      likes: 0,
+    }));
+
+    await Photo.insertMany(photoDocs);
+
+    return res.status(200).json({
+      message: "Foto(s) añadidas correctamente",
+    });
+  } catch (error) {
+    console.error("❌ Error addPhotosToUser:", error);
     res.status(500).json({ message: "Error interno" });
   }
 };
