@@ -18,14 +18,14 @@ import { startMosaicScheduler } from "./utils/mosaicScheduler.js";
 
 dotenv.config();
 
+const app = express();
+const PORT = process.env.PORT || 3000;
+
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
-
-const app = express();
-const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
