@@ -7,6 +7,8 @@ const mosaicConfigSchema = new mongoose.Schema({
   tileHeight: { type: Number, default: 20 },
   mosaicKey: { type: String, default: "default" },
   mosaicSize: { type: Number, default: 2000 },
+  sharpness: { type: Number, default: 0 },
+  overlayOpacity: { type: Number, default: 20 }, 
   allowReuse: { type: Boolean, default: true },
   reuseAfterExhaustion: { type: Boolean, default: false },
   concurrency: { type: Number, default: 3 },
