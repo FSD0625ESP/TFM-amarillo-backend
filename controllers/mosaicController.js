@@ -126,44 +126,110 @@ const generateMainImageTilesInternal = async ({
   return { rows, cols, count: tiles.length };
 };
 
-const matchTilesInternal = async ({ mosaicKey = "default", allowReuse = true, reuseAfterExhaustion = false }) => {
+const matchTilesInternal = async ({
+  mosaicKey = "default",
+  allowReuse = true,
+  reuseAfterExhaustion = false,
+  matchPoolSize = 5,
+  minUseOnce = true,
+  maxUsesPerPhoto = null,
+}) => {
   const tiles = await Tile.find({ mosaicKey }).lean();
   if (!tiles.length) throw createHttpError("No hay tiles para ese mosaicKey.", 404);
 
   const photos = await Photo.find({ hidden: false, dominantColor: { $size: 3 } }).lean();
   if (!photos.length) throw createHttpError("No hay fotos con dominantColor.", 404);
 
-  const sourcePhotos = photos;
-  let availablePhotos = allowReuse ? photos : [...photos];
+  const poolSize = Math.max(1, Math.min(Number(matchPoolSize) || 1, photos.length));
+  const mustUseOnce = Boolean(minUseOnce);
+  const maxUses = Number.isFinite(Number(maxUsesPerPhoto)) && Number(maxUsesPerPhoto) > 0
+    ? Math.floor(Number(maxUsesPerPhoto))
+    : null;
+
+  const usageCount = new Map();
+  let usedOnceCount = 0;
+
+  const hasUsed = (id) => (usageCount.get(id) || 0) > 0;
+  const exhausted = () => usedOnceCount >= photos.length;
+
+  const canUseBase = (photoId) => {
+    if (!allowReuse && !reuseAfterExhaustion) return !hasUsed(photoId);
+    if (!allowReuse && reuseAfterExhaustion) return exhausted() ? true : !hasUsed(photoId);
+    return true;
+  };
+
+  const canUseWithMax = (photoId, ignoreMax = false) => {
+    if (!canUseBase(photoId)) return false;
+    if (ignoreMax || maxUses === null) return true;
+    return (usageCount.get(photoId) || 0) < maxUses;
+  };
+
+  const getTileCandidates = (tile) => {
+    const tileColor = Array.isArray(tile.color) && tile.color.length === 3 ? tile.color : [128, 128, 128];
+    const scored = photos.map((photo) => {
+      if (!Array.isArray(photo.dominantColor) || photo.dominantColor.length !== 3) {
+        return null;
+      }
+      return { photo, distance: colorDistance(tileColor, photo.dominantColor) };
+    }).filter(Boolean);
+
+    scored.sort((a, b) => a.distance - b.distance);
+    return scored.slice(0, poolSize);
+  };
+
   const bulkOps = [];
 
   for (const tile of tiles) {
-    if (!allowReuse && reuseAfterExhaustion && availablePhotos.length === 0) availablePhotos = [...sourcePhotos];
-    let bestPhoto = null;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    const tileColor = Array.isArray(tile.color) && tile.color.length === 3 ? tile.color : [128, 128, 128];
-    for (const photo of availablePhotos) {
-      if (!Array.isArray(photo.dominantColor) || photo.dominantColor.length !== 3) continue;
-      const dist = Math.sqrt(
-        Math.pow(photo.dominantColor[0] - tileColor[0], 2) +
-        Math.pow(photo.dominantColor[1] - tileColor[1], 2) +
-        Math.pow(photo.dominantColor[2] - tileColor[2], 2)
-      );
-      if (dist < bestDistance) {
-        bestDistance = dist;
-        bestPhoto = photo;
+    const candidates = getTileCandidates(tile);
+    let chosen = null;
+
+    if (mustUseOnce && usedOnceCount < photos.length) {
+      chosen = candidates.find(({ photo }) => !hasUsed(photo._id) && canUseWithMax(photo._id));
+    }
+
+    if (!chosen) {
+      chosen = candidates.find(({ photo }) => canUseWithMax(photo._id));
+    }
+
+    if (!chosen) {
+      // Fallback: buscamos en todas las fotos si el pool quedó bloqueado por límites
+      const tileColor = Array.isArray(tile.color) && tile.color.length === 3 ? tile.color : [128, 128, 128];
+      const allScored = photos.map((photo) => ({
+        photo,
+        distance: colorDistance(tileColor, photo.dominantColor || [128, 128, 128]),
+      })).sort((a, b) => a.distance - b.distance);
+
+      chosen = allScored.find(({ photo }) => canUseWithMax(photo._id));
+
+      if (!chosen && maxUses !== null) {
+        // Si el límite máximo impide completar, lo relajamos para llenar el mosaico
+        chosen = allScored.find(({ photo }) => canUseWithMax(photo._id, true));
       }
     }
-    if (bestPhoto) {
-      bulkOps.push({ updateOne: { filter: { _id: tile._id }, update: { matchedPhoto: bestPhoto._id, matchedUrl: bestPhoto.imageUrl } } });
-      if (!allowReuse) {
-        const idx = availablePhotos.findIndex((p) => p._id.toString() === bestPhoto._id.toString());
-        if (idx >= 0) availablePhotos.splice(idx, 1);
-      }
+
+    if (chosen?.photo) {
+      const photoId = chosen.photo._id;
+      const currentCount = usageCount.get(photoId) || 0;
+      usageCount.set(photoId, currentCount + 1);
+      if (currentCount === 0) usedOnceCount += 1;
+
+      bulkOps.push({
+        updateOne: {
+          filter: { _id: tile._id },
+          update: { matchedPhoto: photoId, matchedUrl: chosen.photo.imageUrl },
+        },
+      });
     }
   }
   if (bulkOps.length) await Tile.bulkWrite(bulkOps);
-  return { matched: bulkOps.length, allowReuse, reuseAfterExhaustion };
+  return {
+    matched: bulkOps.length,
+    allowReuse,
+    reuseAfterExhaustion,
+    matchPoolSize: poolSize,
+    minUseOnce: mustUseOnce,
+    maxUsesPerPhoto: maxUses,
+  };
 };
 
 const renderMosaicInternal = async ({
@@ -280,6 +346,21 @@ const renderMosaicInternal = async ({
   const publicId = `${publicIdPrefix}-${mosaicKey}-${timestamp}`;
   const uploadResult = await uploadToCloudinary(mosaicBuffer, { folder, publicId, format });
 
+  const configSnapshot = {
+    tileWidth: config?.tileWidth,
+    tileHeight: config?.tileHeight,
+    outputWidth: targetWidth,
+    outputHeight: targetHeight,
+    allowReuse: config?.allowReuse,
+    reuseAfterExhaustion: config?.reuseAfterExhaustion,
+    matchPoolSize: config?.matchPoolSize,
+    minUseOnce: config?.minUseOnce,
+    maxUsesPerPhoto: config?.maxUsesPerPhoto ?? null,
+    sharpness: finalSharpness,
+    overlayOpacity: finalOpacity,
+    concurrency: Number(concurrency) || 3,
+  };
+
   return await MosaicSnapshot.create({
     mosaicKey,
     url: uploadResult.secure_url,
@@ -288,6 +369,7 @@ const renderMosaicInternal = async ({
     height: targetHeight,
     tilesCount: tiles.length,
     format,
+    config: configSnapshot,
   });
 };
 
@@ -417,7 +499,7 @@ export const updateMosaicConfig = async (req, res) => {
     const {
       enabled = false, mainImageUrl = "", tileWidth = 20, tileHeight = 20, mosaicKey = "default", mosaicSize = 2000,
       allowReuse = true, reuseAfterExhaustion = false, concurrency = 3, intervalHours = 24, refreshSeconds = 30,
-      sharpness = 0, overlayOpacity = 0,
+      sharpness = 0, overlayOpacity = 0, matchPoolSize = 5, minUseOnce = true, maxUsesPerPhoto = null,
     } = req.body;
 
     const update = {
@@ -425,6 +507,11 @@ export const updateMosaicConfig = async (req, res) => {
       mosaicKey: mosaicKey || "default", mosaicSize: Number(mosaicSize) || 2000, allowReuse: Boolean(allowReuse),
       reuseAfterExhaustion: Boolean(reuseAfterExhaustion), concurrency: Math.max(1, Math.min(16, Number(concurrency) || 3)),
       intervalHours: Math.max(1, Number(intervalHours) || 24), refreshSeconds: Math.max(0, Number(refreshSeconds) || 0),
+      matchPoolSize: Math.max(1, Number(matchPoolSize) || 1),
+      minUseOnce: Boolean(minUseOnce),
+      maxUsesPerPhoto: Number.isFinite(Number(maxUsesPerPhoto)) && Number(maxUsesPerPhoto) > 0
+        ? Math.floor(Number(maxUsesPerPhoto))
+        : null,
       sharpness: Number(sharpness) || 0, overlayOpacity: Number(overlayOpacity) || 0, updatedAt: new Date(),
     };
 
@@ -489,14 +576,22 @@ export const runMosaicPipelineFromConfig = async (configDoc) => {
 
   const {
     mainImageUrl, tileWidth, tileHeight, mosaicKey, mosaicSize,
-    allowReuse, reuseAfterExhaustion, concurrency, sharpness, overlayOpacity
+    allowReuse, reuseAfterExhaustion, concurrency, sharpness, overlayOpacity,
+    matchPoolSize, minUseOnce, maxUsesPerPhoto,
   } = config;
 
   await generateMainImageTilesInternal({
     mainImageUrl, tileWidth, tileHeight, mosaicKey, overwrite: true,
   });
 
-  await matchTilesInternal({ mosaicKey, allowReuse, reuseAfterExhaustion });
+  await matchTilesInternal({
+    mosaicKey,
+    allowReuse,
+    reuseAfterExhaustion,
+    matchPoolSize,
+    minUseOnce,
+    maxUsesPerPhoto,
+  });
 
   const snapshot = await renderMosaicInternal({
     mosaicKey,
@@ -523,14 +618,44 @@ const colorDistance = (color1, color2) => {
 
 export const matchTilesToPhotos = async (req, res) => {
   try {
-    const { mosaicKey = "default", allowReuse = true, reuseAfterExhaustion = false } = req.body;
-    const { matched } = await matchTilesInternal({ mosaicKey, allowReuse, reuseAfterExhaustion });
+    const {
+      mosaicKey = "default",
+      allowReuse = true,
+      reuseAfterExhaustion = false,
+      matchPoolSize,
+      minUseOnce,
+      maxUsesPerPhoto,
+    } = req.body;
+
+    const config = await MosaicConfig.findOne({ mosaicKey }).lean();
+    const resolvedMatchPoolSize =
+      matchPoolSize !== undefined && matchPoolSize !== null
+        ? matchPoolSize
+        : config?.matchPoolSize;
+    const resolvedMinUseOnce =
+      typeof minUseOnce === "boolean" ? minUseOnce : config?.minUseOnce;
+    const resolvedMaxUsesPerPhoto =
+      maxUsesPerPhoto !== undefined && maxUsesPerPhoto !== null
+        ? maxUsesPerPhoto
+        : config?.maxUsesPerPhoto;
+
+    const { matched } = await matchTilesInternal({
+      mosaicKey,
+      allowReuse,
+      reuseAfterExhaustion,
+      matchPoolSize: resolvedMatchPoolSize,
+      minUseOnce: resolvedMinUseOnce,
+      maxUsesPerPhoto: resolvedMaxUsesPerPhoto,
+    });
     return res.status(200).json({
       message: "Tiles emparejados correctamente.",
       mosaicKey,
       matched,
       allowReuse,
       reuseAfterExhaustion,
+      matchPoolSize: resolvedMatchPoolSize,
+      minUseOnce: resolvedMinUseOnce,
+      maxUsesPerPhoto: resolvedMaxUsesPerPhoto,
     });
   } catch (error) {
     console.error("Error al emparejar tiles:", error);
