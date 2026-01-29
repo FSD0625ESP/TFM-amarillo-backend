@@ -18,6 +18,12 @@ import { startMosaicScheduler } from "./utils/mosaicScheduler.js";
 
 dotenv.config();
 
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
