@@ -21,6 +21,24 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const server = http.createServer(app);
+const DEFAULT_ORIGINS = ["http://localhost:5173", "http://localhost:5174"];
+
+const normalizeOrigin = (origin) => origin.replace(/\/+$/, "");
+const parseOrigins = (value) =>
+  value
+    ? value
+        .split(",")
+        .map((origin) => normalizeOrigin(origin.trim()))
+        .filter(Boolean)
+    : [];
+const unique = (origins) => [...new Set(origins)];
+const allowedOrigins = (() => {
+  const envOrigins = parseOrigins(process.env.FRONTEND_ORIGINS);
+  if (envOrigins.length) return unique(envOrigins);
+  const singleOrigin = parseOrigins(process.env.FRONTEND);
+  if (singleOrigin.length) return unique(singleOrigin);
+  return DEFAULT_ORIGINS;
+})();
 
 // Inicializar WebSocket de usuarios online
 setupOnlineUsersWS(server);
@@ -28,10 +46,7 @@ setupOnlineUsersWS(server);
 // Middlewares
 app.use(
   cors({
-    origin: [
-      process.env.FRONTEND,
-      "http://localhost:5173"
-    ],
+    origin: allowedOrigins,
     credentials: true,
   })
 );
@@ -67,5 +82,4 @@ app.get("/ping", (req, res) => {
 server.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
 });
-
 
