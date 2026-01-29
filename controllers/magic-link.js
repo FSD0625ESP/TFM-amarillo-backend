@@ -67,9 +67,7 @@ export const sendSmartMagicLink = async (req, res) => {
       { expiresIn: "2h" }
     );
 
-    // const link = `https://gilded-vacherin-e79d5a.netlify.app/userPage?token=${encodeURIComponent(
-    //   token
-    const link = `http://localhost:5173/auth?token=${encodeURIComponent(
+    const link = `${frontendBaseUrl}/auth-redirect?token=${encodeURIComponent(
       token
     )}`;
 
