@@ -37,6 +37,9 @@ export const sendSmartMagicLink = async (req, res) => {
 
       const link = `${frontendBaseUrl}/register?token=${encodeURIComponent(
         token
+
+      // const link = `https://gilded-vacherin-e79d5a.netlify.app/register?token=${encodeURIComponent(
+      //   token
       )}`;
 
       const html = await render(

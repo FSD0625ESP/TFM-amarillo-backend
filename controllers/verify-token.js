@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import EmailEntry from "../models/EmailEntry.js";
 
-export const verifyToken = (req, res) => {
+export const verifyToken = async (req, res) => {
   try {
     const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
     const email = typeof decoded?.email === "string" ? decoded.email : null;
