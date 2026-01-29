@@ -10,23 +10,29 @@ async function fetchImageBuffer(url) {
   if (typeof fetch !== "function") {
     throw new Error("Fetch API no disponible en este entorno.");
   }
-
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`No se pudo descargar la imagen (${response.status}).`);
   }
-
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
 }
 
-const getOptimizedUrl = (url, { width, height } = {}) => {
+// Helper para asegurar rangos 0-100
+const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
+
+const getOptimizedUrl = (url, { width, height, quality = "auto", sharpness = 0 } = {}) => {
   if (!url || !url.includes("/upload/")) return url;
   const safeWidth = Math.max(1, Math.round(Number(width) || 0));
   const safeHeight = Math.max(1, Math.round(Number(height) || 0));
+  
   const sizeParams =
     safeWidth && safeHeight ? `w_${safeWidth},h_${safeHeight},c_fill,` : "";
-  const transformation = `${sizeParams}q_auto,f_auto,dpr_auto`;
+    
+  // Aplicamos sharpness solo si es > 0
+  const effectParams = sharpness > 0 ? `,e_sharpen:${sharpness}` : "";
+  
+  const transformation = `${sizeParams}q_${quality},f_auto${effectParams}`;
   return url.replace("/upload/", `/upload/${transformation}/`);
 };
 
@@ -64,7 +70,6 @@ const createSolidTile = (color, width, height) =>
 const mapWithConcurrency = async (items, limit, mapper) => {
   const results = new Array(items.length);
   let currentIndex = 0;
-
   const workers = Array.from({ length: limit }, async () => {
     while (currentIndex < items.length) {
       const index = currentIndex;
@@ -72,7 +77,6 @@ const mapWithConcurrency = async (items, limit, mapper) => {
       results[index] = await mapper(items[index], index);
     }
   });
-
   await Promise.all(workers);
   return results.filter(Boolean);
 };
@@ -90,31 +94,20 @@ const generateMainImageTilesInternal = async ({
   mosaicKey = "default",
   overwrite = true,
 }) => {
-  if (!mainImageUrl) {
-    throw createHttpError("mainImageUrl es requerido.", 400);
-  }
+  if (!mainImageUrl) throw createHttpError("mainImageUrl es requerido.", 400);
+  if (tileWidth <= 0 || tileHeight <= 0) throw createHttpError("tileWidth/tileHeight inválidos.", 400);
 
-  if (tileWidth <= 0 || tileHeight <= 0) {
-    throw createHttpError("tileWidth/tileHeight inválidos.", 400);
-  }
-
-  if (overwrite) {
-    await Tile.deleteMany({ mosaicKey });
-  }
+  if (overwrite) await Tile.deleteMany({ mosaicKey });
 
   const imageBuffer = await fetchImageBuffer(mainImageUrl);
   const mainImage = sharp(imageBuffer);
   const metadata = await mainImage.metadata();
-
-  if (!metadata.width || !metadata.height) {
-    throw createHttpError("No se pudo leer el tamaño de la imagen.", 400);
-  }
+  if (!metadata.width || !metadata.height) throw createHttpError("No se pudo leer el tamaño de la imagen.", 400);
 
   const mainWidth = metadata.width;
   const mainHeight = metadata.height;
   const cols = Math.ceil(mainWidth / tileWidth);
   const rows = Math.ceil(mainHeight / tileHeight);
-
   const tiles = [];
 
   for (let row = 0; row < rows; row += 1) {
@@ -123,33 +116,13 @@ const generateMainImageTilesInternal = async ({
       const top = row * tileHeight;
       const width = Math.min(tileWidth, mainWidth - left);
       const height = Math.min(tileHeight, mainHeight - top);
-
-      const tileBuffer = await mainImage
-        .clone()
-        .extract({ left, top, width, height })
-        .toBuffer();
-
+      const tileBuffer = await mainImage.clone().extract({ left, top, width, height }).toBuffer();
       const tileColors = await extractColors(tileBuffer, 1);
       const dominantColor = tileColors[0] || [128, 128, 128];
-
-      tiles.push({
-        mosaicKey,
-        row,
-        col,
-        left,
-        top,
-        width,
-        height,
-        color: dominantColor,
-        matchedUrl: "",
-      });
+      tiles.push({ mosaicKey, row, col, left, top, width, height, color: dominantColor, matchedUrl: "" });
     }
   }
-
-  if (tiles.length) {
-    await Tile.insertMany(tiles);
-  }
-
+  if (tiles.length) await Tile.insertMany(tiles);
   return { rows, cols, count: tiles.length };
 };
 
@@ -157,74 +130,106 @@ const matchTilesInternal = async ({
   mosaicKey = "default",
   allowReuse = true,
   reuseAfterExhaustion = false,
+  matchPoolSize = 5,
+  minUseOnce = true,
+  maxUsesPerPhoto = null,
 }) => {
   const tiles = await Tile.find({ mosaicKey }).lean();
-  if (!tiles.length) {
-    throw createHttpError("No hay tiles para ese mosaicKey.", 404);
-  }
+  if (!tiles.length) throw createHttpError("No hay tiles para ese mosaicKey.", 404);
 
-  const photos = await Photo.find({
-    hidden: false,
-    dominantColor: { $size: 3 },
-  }).lean();
+  const photos = await Photo.find({ hidden: false, dominantColor: { $size: 3 } }).lean();
+  if (!photos.length) throw createHttpError("No hay fotos con dominantColor.", 404);
 
-  if (!photos.length) {
-    throw createHttpError("No hay fotos con dominantColor.", 404);
-  }
+  const poolSize = Math.max(1, Math.min(Number(matchPoolSize) || 1, photos.length));
+  const mustUseOnce = Boolean(minUseOnce);
+  const maxUses = Number.isFinite(Number(maxUsesPerPhoto)) && Number(maxUsesPerPhoto) > 0
+    ? Math.floor(Number(maxUsesPerPhoto))
+    : null;
 
-  const sourcePhotos = photos;
-  let availablePhotos = allowReuse ? photos : [...photos];
+  const usageCount = new Map();
+  let usedOnceCount = 0;
+
+  const hasUsed = (id) => (usageCount.get(id) || 0) > 0;
+  const exhausted = () => usedOnceCount >= photos.length;
+
+  const canUseBase = (photoId) => {
+    if (!allowReuse && !reuseAfterExhaustion) return !hasUsed(photoId);
+    if (!allowReuse && reuseAfterExhaustion) return exhausted() ? true : !hasUsed(photoId);
+    return true;
+  };
+
+  const canUseWithMax = (photoId, ignoreMax = false) => {
+    if (!canUseBase(photoId)) return false;
+    if (ignoreMax || maxUses === null) return true;
+    return (usageCount.get(photoId) || 0) < maxUses;
+  };
+
+  const getTileCandidates = (tile) => {
+    const tileColor = Array.isArray(tile.color) && tile.color.length === 3 ? tile.color : [128, 128, 128];
+    const scored = photos.map((photo) => {
+      if (!Array.isArray(photo.dominantColor) || photo.dominantColor.length !== 3) {
+        return null;
+      }
+      return { photo, distance: colorDistance(tileColor, photo.dominantColor) };
+    }).filter(Boolean);
+
+    scored.sort((a, b) => a.distance - b.distance);
+    return scored.slice(0, poolSize);
+  };
+
   const bulkOps = [];
 
   for (const tile of tiles) {
-    if (!allowReuse && reuseAfterExhaustion && availablePhotos.length === 0) {
-      availablePhotos = [...sourcePhotos];
-    }
-    let bestPhoto = null;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    const tileColor =
-      Array.isArray(tile.color) && tile.color.length === 3
-        ? tile.color
-        : [128, 128, 128];
+    const candidates = getTileCandidates(tile);
+    let chosen = null;
 
-    for (const photo of availablePhotos) {
-      if (!Array.isArray(photo.dominantColor) || photo.dominantColor.length !== 3) {
-        continue;
-      }
-      const distance = colorDistance(tileColor, photo.dominantColor);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestPhoto = photo;
-      }
+    if (mustUseOnce && usedOnceCount < photos.length) {
+      chosen = candidates.find(({ photo }) => !hasUsed(photo._id) && canUseWithMax(photo._id));
     }
 
-    if (bestPhoto) {
+    if (!chosen) {
+      chosen = candidates.find(({ photo }) => canUseWithMax(photo._id));
+    }
+
+    if (!chosen) {
+      // Fallback: buscamos en todas las fotos si el pool quedó bloqueado por límites
+      const tileColor = Array.isArray(tile.color) && tile.color.length === 3 ? tile.color : [128, 128, 128];
+      const allScored = photos.map((photo) => ({
+        photo,
+        distance: colorDistance(tileColor, photo.dominantColor || [128, 128, 128]),
+      })).sort((a, b) => a.distance - b.distance);
+
+      chosen = allScored.find(({ photo }) => canUseWithMax(photo._id));
+
+      if (!chosen && maxUses !== null) {
+        // Si el límite máximo impide completar, lo relajamos para llenar el mosaico
+        chosen = allScored.find(({ photo }) => canUseWithMax(photo._id, true));
+      }
+    }
+
+    if (chosen?.photo) {
+      const photoId = chosen.photo._id;
+      const currentCount = usageCount.get(photoId) || 0;
+      usageCount.set(photoId, currentCount + 1);
+      if (currentCount === 0) usedOnceCount += 1;
+
       bulkOps.push({
         updateOne: {
           filter: { _id: tile._id },
-          update: {
-            matchedPhoto: bestPhoto._id,
-            matchedUrl: bestPhoto.imageUrl,
-          },
+          update: { matchedPhoto: photoId, matchedUrl: chosen.photo.imageUrl },
         },
       });
-
-      if (!allowReuse) {
-        const index = availablePhotos.findIndex(
-          (photo) => photo._id.toString() === bestPhoto._id.toString()
-        );
-        if (index >= 0) {
-          availablePhotos.splice(index, 1);
-        }
-      }
     }
   }
-
-  if (bulkOps.length) {
-    await Tile.bulkWrite(bulkOps);
-  }
-
-  return { matched: bulkOps.length, allowReuse, reuseAfterExhaustion };
+  if (bulkOps.length) await Tile.bulkWrite(bulkOps);
+  return {
+    matched: bulkOps.length,
+    allowReuse,
+    reuseAfterExhaustion,
+    matchPoolSize: poolSize,
+    minUseOnce: mustUseOnce,
+    maxUsesPerPhoto: maxUses,
+  };
 };
 
 const renderMosaicInternal = async ({
@@ -235,37 +240,43 @@ const renderMosaicInternal = async ({
   publicIdPrefix = "mosaic",
   format = "jpg",
   concurrency = 3,
+  // Parámetros opcionales del request
+  sharpness, 
+  overlayOpacity,
+  mainImageUrl
 }) => {
-  const tiles = await Tile.find({ mosaicKey }).lean();
-  if (!tiles.length) {
-    throw createHttpError("No hay tiles para ese mosaicKey.", 404);
-  }
+  // 1. Configuración y Fallbacks
+  const config = await MosaicConfig.findOne({ mosaicKey }).lean();
+  
+  const finalOpacity = overlayOpacity !== undefined 
+    ? clamp(Number(overlayOpacity), 0, 100) 
+    : (config?.overlayOpacity || 0);
 
-  const baseWidth = tiles.reduce(
-    (maxWidth, tile) => Math.max(maxWidth, tile.left + tile.width),
-    0
-  );
-  const baseHeight = tiles.reduce(
-    (maxHeight, tile) => Math.max(maxHeight, tile.top + tile.height),
-    0
-  );
+  const finalSharpness = sharpness !== undefined 
+    ? clamp(Number(sharpness), 0, 100) 
+    : (config?.sharpness || 0);
+
+  const finalMainImage = mainImageUrl || config?.mainImageUrl;
+
+  const tiles = await Tile.find({ mosaicKey }).lean();
+  if (!tiles.length) throw createHttpError("No hay tiles para ese mosaicKey.", 404);
+
+  const baseWidth = tiles.reduce((acc, t) => Math.max(acc, t.left + t.width), 0);
+  const baseHeight = tiles.reduce((acc, t) => Math.max(acc, t.top + t.height), 0);
 
   const targetWidth = outputWidth ? Number(outputWidth) : baseWidth;
   const targetHeight = outputHeight ? Number(outputHeight) : baseHeight;
-
-  if (!Number.isFinite(targetWidth) || !Number.isFinite(targetHeight)) {
-    throw createHttpError("outputWidth/outputHeight inválidos.", 400);
-  }
+  if (!Number.isFinite(targetWidth) || !Number.isFinite(targetHeight)) throw createHttpError("outputWidth/outputHeight inválidos.", 400);
 
   const scaleX = targetWidth / baseWidth;
   const scaleY = targetHeight / baseHeight;
 
+  // 2. Generación del Mosaico
   const compositeInputs = await mapWithConcurrency(
     tiles,
     Math.max(1, Math.min(16, Number(concurrency) || 6)),
     async (tile) => {
       const color = Array.isArray(tile.color) ? tile.color : [128, 128, 128];
-      const [r, g, b] = color;
       const width = Math.max(1, Math.round(tile.width * scaleX));
       const height = Math.max(1, Math.round(tile.height * scaleY));
       const left = Math.round(tile.left * scaleX);
@@ -274,30 +285,58 @@ const renderMosaicInternal = async ({
       let inputBuffer;
       if (tile.matchedUrl) {
         try {
-          const optimizedUrl = getOptimizedUrl(tile.matchedUrl, { width, height });
+          const optimizedUrl = getOptimizedUrl(tile.matchedUrl, { 
+            width, 
+            height,
+            sharpness: finalSharpness
+          });
           const imgBuffer = await fetchImageBuffer(optimizedUrl);
-          inputBuffer = await sharp(imgBuffer)
-            .resize(width, height, { fit: "cover" })
-            .toBuffer();
+          inputBuffer = await sharp(imgBuffer).resize(width, height, { fit: "cover" }).toBuffer();
         } catch (error) {
-          console.error("Error cargando imagen tile:", error);
-          inputBuffer = await createSolidTile([r, g, b], width, height);
+          inputBuffer = await createSolidTile(color, width, height);
         }
       } else {
-        inputBuffer = await createSolidTile([r, g, b], width, height);
+        inputBuffer = await createSolidTile(color, width, height);
       }
-
       return { input: inputBuffer, left, top };
     }
   );
 
+  // 3. Aplicación del Overlay (CORREGIDO: Forzando PNG)
+  if (finalOpacity > 0 && finalMainImage) {
+    try {
+      console.log(`Aplicando overlay (Opacidad: ${finalOpacity}%)`);
+      const mainImgBuffer = await fetchImageBuffer(finalMainImage);
+      
+      // PASO A: Preparar imagen con 4 canales (sRGB + Alpha)
+      const resizedOverlay = await sharp(mainImgBuffer)
+        .resize(targetWidth, targetHeight, { fit: "fill" })
+        .toColorspace('srgb')
+        .ensureAlpha()
+        .png() // <--- ESTA ES LA CLAVE: Forzamos formato que soporta transparencia
+        .toBuffer(); 
+
+      // PASO B: Ahora aplicamos la transparencia sin miedo
+      const transparentOverlay = await sharp(resizedOverlay)
+        .linear(
+          [1, 1, 1, finalOpacity / 100], // R, G, B, Alpha
+          [0, 0, 0, 0]                   // Offsets
+        )
+        .toBuffer();
+
+      compositeInputs.push({
+        input: transparentOverlay,
+        left: 0,
+        top: 0,
+        blend: "over",
+      });
+    } catch (err) {
+      console.error("Error aplicando overlay:", err);
+    }
+  }
+
   const mosaicBuffer = await sharp({
-    create: {
-      width: targetWidth,
-      height: targetHeight,
-      channels: 3,
-      background: { r: 0, g: 0, b: 0 },
-    },
+    create: { width: targetWidth, height: targetHeight, channels: 3, background: { r: 0, g: 0, b: 0 } },
   })
     .composite(compositeInputs)
     .toFormat(format)
@@ -305,13 +344,24 @@ const renderMosaicInternal = async ({
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const publicId = `${publicIdPrefix}-${mosaicKey}-${timestamp}`;
-  const uploadResult = await uploadToCloudinary(mosaicBuffer, {
-    folder,
-    publicId,
-    format,
-  });
+  const uploadResult = await uploadToCloudinary(mosaicBuffer, { folder, publicId, format });
 
-  const snapshot = await MosaicSnapshot.create({
+  const configSnapshot = {
+    tileWidth: config?.tileWidth,
+    tileHeight: config?.tileHeight,
+    outputWidth: targetWidth,
+    outputHeight: targetHeight,
+    allowReuse: config?.allowReuse,
+    reuseAfterExhaustion: config?.reuseAfterExhaustion,
+    matchPoolSize: config?.matchPoolSize,
+    minUseOnce: config?.minUseOnce,
+    maxUsesPerPhoto: config?.maxUsesPerPhoto ?? null,
+    sharpness: finalSharpness,
+    overlayOpacity: finalOpacity,
+    concurrency: Number(concurrency) || 3,
+  };
+
+  return await MosaicSnapshot.create({
     mosaicKey,
     url: uploadResult.secure_url,
     publicId: uploadResult.public_id,
@@ -319,9 +369,44 @@ const renderMosaicInternal = async ({
     height: targetHeight,
     tilesCount: tiles.length,
     format,
+    config: configSnapshot,
   });
+};
 
-  return snapshot;
+export const renderMosaic = async (req, res) => {
+  try {
+    const {
+      mosaicKey = "default",
+      outputWidth,
+      outputHeight,
+      folder = "Mosaic/renders",
+      publicIdPrefix = "mosaic",
+      format = "jpg",
+      concurrency = 3,
+      sharpness,
+      overlayOpacity,
+      mainImageUrl
+    } = req.body;
+
+    const snapshot = await renderMosaicInternal({
+      mosaicKey,
+      outputWidth,
+      outputHeight,
+      folder,
+      publicIdPrefix,
+      format,
+      concurrency,
+      sharpness,
+      overlayOpacity,
+      mainImageUrl
+    });
+
+    return res.status(200).json({ message: "Mosaico generado.", snapshot });
+  } catch (error) {
+    console.error("Error al renderizar mosaico:", error);
+    const status = error.status || 500;
+    return res.status(status).json({ message: error.message || "Error al renderizar mosaico." });
+  }
 };
 
 export const generateMainImageTiles = async (req, res) => {
@@ -364,39 +449,6 @@ export const listTiles = async (req, res) => {
   } catch (error) {
     console.error("Error al listar tiles:", error);
     return res.status(500).json({ message: "Error al listar tiles." });
-  }
-};
-
-export const renderMosaic = async (req, res) => {
-  try {
-    const {
-      mosaicKey = "default",
-      outputWidth,
-      outputHeight,
-      folder = "Mosaic/renders",
-      publicIdPrefix = "mosaic",
-      format = "jpg",
-      concurrency = 3,
-    } = req.body;
-
-    const snapshot = await renderMosaicInternal({
-      mosaicKey,
-      outputWidth,
-      outputHeight,
-      folder,
-      publicIdPrefix,
-      format,
-      concurrency,
-    });
-
-    return res.status(200).json({
-      message: "Mosaico generado y guardado en Cloudinary.",
-      snapshot,
-    });
-  } catch (error) {
-    console.error("Error al renderizar mosaico:", error);
-    const status = error.status || 500;
-    return res.status(status).json({ message: error.message || "Error al renderizar mosaico." });
   }
 };
 
@@ -445,46 +497,25 @@ export const getMosaicConfig = async (req, res) => {
 export const updateMosaicConfig = async (req, res) => {
   try {
     const {
-      enabled = false,
-      mainImageUrl = "",
-      tileWidth = 20,
-      tileHeight = 20,
-      mosaicKey = "default",
-      mosaicSize = 2000,
-      allowReuse = true,
-      reuseAfterExhaustion = false,
-      concurrency = 3,
-      intervalHours = 24,
-      refreshSeconds = 30,
+      enabled = false, mainImageUrl = "", tileWidth = 20, tileHeight = 20, mosaicKey = "default", mosaicSize = 2000,
+      allowReuse = true, reuseAfterExhaustion = false, concurrency = 3, intervalHours = 24, refreshSeconds = 30,
+      sharpness = 0, overlayOpacity = 0, matchPoolSize = 5, minUseOnce = true, maxUsesPerPhoto = null,
     } = req.body;
 
-    if (enabled && !mainImageUrl) {
-      return res.status(400).json({
-        message: "mainImageUrl es requerido para activar el modo automático.",
-      });
-    }
-
     const update = {
-      enabled: Boolean(enabled),
-      mainImageUrl,
-      tileWidth: Number(tileWidth) || 20,
-      tileHeight: Number(tileHeight) || 20,
-      mosaicKey: mosaicKey || "default",
-      mosaicSize: Number(mosaicSize) || 2000,
-      allowReuse: Boolean(allowReuse),
-      reuseAfterExhaustion: Boolean(reuseAfterExhaustion),
-      concurrency: Math.max(1, Math.min(16, Number(concurrency) || 3)),
-      intervalHours: Math.max(1, Number(intervalHours) || 24),
-      refreshSeconds: Math.max(0, Number(refreshSeconds) || 0),
-      updatedAt: new Date(),
+      enabled: Boolean(enabled), mainImageUrl, tileWidth: Number(tileWidth) || 20, tileHeight: Number(tileHeight) || 20,
+      mosaicKey: mosaicKey || "default", mosaicSize: Number(mosaicSize) || 2000, allowReuse: Boolean(allowReuse),
+      reuseAfterExhaustion: Boolean(reuseAfterExhaustion), concurrency: Math.max(1, Math.min(16, Number(concurrency) || 3)),
+      intervalHours: Math.max(1, Number(intervalHours) || 24), refreshSeconds: Math.max(0, Number(refreshSeconds) || 0),
+      matchPoolSize: Math.max(1, Number(matchPoolSize) || 1),
+      minUseOnce: Boolean(minUseOnce),
+      maxUsesPerPhoto: Number.isFinite(Number(maxUsesPerPhoto)) && Number(maxUsesPerPhoto) > 0
+        ? Math.floor(Number(maxUsesPerPhoto))
+        : null,
+      sharpness: Number(sharpness) || 0, overlayOpacity: Number(overlayOpacity) || 0, updatedAt: new Date(),
     };
 
-    const config = await MosaicConfig.findOneAndUpdate({}, update, {
-      new: true,
-      upsert: true,
-      setDefaultsOnInsert: true,
-    });
-
+    const config = await MosaicConfig.findOneAndUpdate({}, update, { new: true, upsert: true, setDefaultsOnInsert: true });
     return res.status(200).json(config);
   } catch (error) {
     console.error("Error actualizando config de mosaico:", error);
@@ -495,30 +526,16 @@ export const updateMosaicConfig = async (req, res) => {
 export const deleteMosaicSnapshot = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!id) {
-      return res.status(400).json({ message: "ID requerido." });
-    }
+    if (!id) return res.status(400).json({ message: "ID requerido." });
 
     const snapshot = await MosaicSnapshot.findById(id);
-    if (!snapshot) {
-      return res.status(404).json({ message: "Mosaico no encontrado." });
-    }
+    if (!snapshot) return res.status(404).json({ message: "Mosaico no encontrado." });
 
     if (snapshot.publicId) {
-      const destroyResult = await cloudinary.uploader.destroy(snapshot.publicId, {
-        resource_type: "image",
-      });
-      const result = destroyResult?.result;
-      if (result && result !== "ok" && result !== "not found") {
-        return res.status(502).json({
-          message: "No se pudo eliminar el mosaico en Cloudinary.",
-          result,
-        });
-      }
+      await cloudinary.uploader.destroy(snapshot.publicId, { resource_type: "image" });
     }
 
     await MosaicSnapshot.deleteOne({ _id: id });
-
     return res.status(200).json({ message: "Mosaico eliminado.", id });
   } catch (error) {
     console.error("Error eliminando mosaico:", error);
@@ -528,9 +545,7 @@ export const deleteMosaicSnapshot = async (req, res) => {
 
 export const uploadMainImage = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: "Archivo requerido." });
-    }
+    if (!req.file) return res.status(400).json({ message: "Archivo requerido." });
 
     const { folder = "Mosaic/main" } = req.body;
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -551,38 +566,32 @@ export const uploadMainImage = async (req, res) => {
     });
   } catch (error) {
     console.error("Error subiendo imagen principal:", error);
-    return res
-      .status(500)
-      .json({ message: "Error subiendo imagen principal." });
+    return res.status(500).json({ message: "Error subiendo imagen principal." });
   }
 };
 
 export const runMosaicPipelineFromConfig = async (configDoc) => {
   const config = configDoc instanceof MosaicConfig ? configDoc : null;
-  if (!config) {
-    throw new Error("Config inválida.");
-  }
+  if (!config) throw new Error("Config inválida.");
 
   const {
-    mainImageUrl,
-    tileWidth,
-    tileHeight,
-    mosaicKey,
-    mosaicSize,
-    allowReuse,
-    reuseAfterExhaustion,
-    concurrency,
+    mainImageUrl, tileWidth, tileHeight, mosaicKey, mosaicSize,
+    allowReuse, reuseAfterExhaustion, concurrency, sharpness, overlayOpacity,
+    matchPoolSize, minUseOnce, maxUsesPerPhoto,
   } = config;
 
   await generateMainImageTilesInternal({
-    mainImageUrl,
-    tileWidth,
-    tileHeight,
-    mosaicKey,
-    overwrite: true,
+    mainImageUrl, tileWidth, tileHeight, mosaicKey, overwrite: true,
   });
 
-  await matchTilesInternal({ mosaicKey, allowReuse, reuseAfterExhaustion });
+  await matchTilesInternal({
+    mosaicKey,
+    allowReuse,
+    reuseAfterExhaustion,
+    matchPoolSize,
+    minUseOnce,
+    maxUsesPerPhoto,
+  });
 
   const snapshot = await renderMosaicInternal({
     mosaicKey,
@@ -592,20 +601,19 @@ export const runMosaicPipelineFromConfig = async (configDoc) => {
     publicIdPrefix: "mosaic",
     format: "jpg",
     concurrency: Math.max(1, Math.min(16, Number(concurrency) || 3)),
+    sharpness,
+    overlayOpacity
   });
 
   config.lastRunAt = new Date();
   await config.save();
-
   return snapshot;
 };
 
 const colorDistance = (color1, color2) => {
   const [r1, g1, b1] = color1;
   const [r2, g2, b2] = color2;
-  return Math.sqrt(
-    Math.pow(r2 - r1, 2) + Math.pow(g2 - g1, 2) + Math.pow(b2 - b1, 2)
-  );
+  return Math.sqrt(Math.pow(r2 - r1, 2) + Math.pow(g2 - g1, 2) + Math.pow(b2 - b1, 2));
 };
 
 export const matchTilesToPhotos = async (req, res) => {
@@ -614,20 +622,40 @@ export const matchTilesToPhotos = async (req, res) => {
       mosaicKey = "default",
       allowReuse = true,
       reuseAfterExhaustion = false,
+      matchPoolSize,
+      minUseOnce,
+      maxUsesPerPhoto,
     } = req.body;
+
+    const config = await MosaicConfig.findOne({ mosaicKey }).lean();
+    const resolvedMatchPoolSize =
+      matchPoolSize !== undefined && matchPoolSize !== null
+        ? matchPoolSize
+        : config?.matchPoolSize;
+    const resolvedMinUseOnce =
+      typeof minUseOnce === "boolean" ? minUseOnce : config?.minUseOnce;
+    const resolvedMaxUsesPerPhoto =
+      maxUsesPerPhoto !== undefined && maxUsesPerPhoto !== null
+        ? maxUsesPerPhoto
+        : config?.maxUsesPerPhoto;
 
     const { matched } = await matchTilesInternal({
       mosaicKey,
       allowReuse,
       reuseAfterExhaustion,
+      matchPoolSize: resolvedMatchPoolSize,
+      minUseOnce: resolvedMinUseOnce,
+      maxUsesPerPhoto: resolvedMaxUsesPerPhoto,
     });
-
     return res.status(200).json({
       message: "Tiles emparejados correctamente.",
       mosaicKey,
       matched,
       allowReuse,
       reuseAfterExhaustion,
+      matchPoolSize: resolvedMatchPoolSize,
+      minUseOnce: resolvedMinUseOnce,
+      maxUsesPerPhoto: resolvedMaxUsesPerPhoto,
     });
   } catch (error) {
     console.error("Error al emparejar tiles:", error);
