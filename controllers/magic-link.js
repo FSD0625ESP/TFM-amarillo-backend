@@ -13,6 +13,9 @@ dotenv.config();
 
 export const sendSmartMagicLink = async (req, res) => {
   try {
+    const frontendBaseUrl = (process.env.FRONTEND || "http://localhost:5173")
+      .replace(/\/+$/, "");
+
     const { email } = req.body;
     if (!email) {
       return res.status(400).json({ message: "El email es requerido." });
@@ -32,7 +35,7 @@ export const sendSmartMagicLink = async (req, res) => {
         { expiresIn: "2h" }
       );
 
-      const link = `http://localhost:5173/register?token=${encodeURIComponent(
+      const link = `${frontendBaseUrl}/register?token=${encodeURIComponent(
         token
 
       // const link = `https://gilded-vacherin-e79d5a.netlify.app/register?token=${encodeURIComponent(

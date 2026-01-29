@@ -1,0 +1,22 @@
+{
+    "sourceFile": "controllers/cloudinaryUrls.js",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 1,
+            "patches": [
+                {
+                    "date": 1769560554275,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1769560946056,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,8 +1,8 @@\n import cloudinary from \"../config/cloudinary.js\";\n \n export const getPngUrl = (publicId) => {\n   return cloudinary.url(publicId, {\n-    fetch_format: \"jpg\",\n+    fetch_format: \"png\",\n     secure: true,\n   });\n };\n"
+                }
+            ],
+            "date": 1769560554275,
+            "name": "Commit-0",
+            "content": "import cloudinary from \"../config/cloudinary.js\";\n\nexport const getPngUrl = (publicId) => {\n  return cloudinary.url(publicId, {\n    fetch_format: \"jpg\",\n    secure: true,\n  });\n};\n"
+        }
+    ]
+}

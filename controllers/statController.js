@@ -126,3 +126,16 @@ export const getPhotoYears = async (_req, res) => {
     res.status(500).json({ message: "Error obteniendo años" });
   }
 };
+
+export const getUsablePhotosCount = async (_req, res) => {
+  try {
+    const count = await Photo.countDocuments({
+      hidden: false,
+      dominantColor: { $size: 3 },
+    });
+    res.json({ count });
+  } catch (error) {
+    console.error("Error obteniendo fotos utilizables:", error);
+    res.status(500).json({ message: "Error obteniendo fotos utilizables" });
+  }
+};

@@ -4,6 +4,7 @@ import {
   getPhotoYears,
   getPublicStats,
   getTopCountries,
+  getUsablePhotosCount,
 } from "../controllers/statController.js";
 
 const router = Router();
@@ -13,5 +14,6 @@ router.get("/public", getPublicStats);
 router.get("/top-countries", getTopCountries);
 router.get("/countries", getCountries);
 router.get("/years", getPhotoYears);
+router.get("/usable-photos", getUsablePhotosCount);
 
 export default router;

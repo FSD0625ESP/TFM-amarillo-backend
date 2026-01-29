@@ -9,16 +9,24 @@ cloudinary.config({
 });
 
 const defaultImageFormat = "jpg";
-const defaultImageQuality = process.env.CLOUDINARY_IMAGE_QUALITY || "auto:good";
+const defaultImageQuality = process.env.CLOUDINARY_IMAGE_QUALITY || "auto";
 const defaultFolder = process.env.CLOUDINARY_FOLDER || "proyecto_amarillo";
 
 export const cloudinaryUploadOptions = {
   folder: defaultFolder,
   format: defaultImageFormat,
+  /**
+    eager: [
+      {
+        fetch_format: "jpg", // use fetch_format for automatic format
+        quality: "auto", // use quality: 'auto' for automatic quality
+      },
+    ],
+  */
   transformation: [
-    {
-      quality: defaultImageQuality,
-    },
+    { width: 1280, crop: "limit"},
+      {fetch_format: defaultImageFormat},
+      {quality: defaultImageQuality},
   ],
 };
 
