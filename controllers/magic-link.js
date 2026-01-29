@@ -64,7 +64,7 @@ export const sendSmartMagicLink = async (req, res) => {
       { expiresIn: "2h" }
     );
 
-    const link = `${frontendBaseUrl}/userPage?token=${encodeURIComponent(
+    const link = `${frontendBaseUrl}/auth-redirect?token=${encodeURIComponent(
       token
     )}`;
 
