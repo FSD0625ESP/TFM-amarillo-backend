@@ -136,6 +136,11 @@ const matchTilesInternal = async ({
 }) => {
   const tiles = await Tile.find({ mosaicKey }).lean();
   if (!tiles.length) throw createHttpError("No hay tiles para ese mosaicKey.", 404);
+  // Shuffle tiles to distribute "must-use" photos across the mosaic.
+  for (let i = tiles.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+  }
 
   const photos = await Photo.find({ hidden: false, dominantColor: { $size: 3 } }).lean();
   if (!photos.length) throw createHttpError("No hay fotos con dominantColor.", 404);
