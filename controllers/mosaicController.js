@@ -131,11 +131,18 @@ const matchTilesInternal = async ({
   allowReuse = true,
   reuseAfterExhaustion = false,
   matchPoolSize = 5,
+  mismatchDistanceThreshold = 150,
   minUseOnce = true,
   maxUsesPerPhoto = null,
 }) => {
   const tiles = await Tile.find({ mosaicKey }).lean();
   if (!tiles.length) throw createHttpError("No hay tiles para ese mosaicKey.", 404);
+
+  // Shuffle para distribuir los emparejamientos por el lienzo
+  for (let i = tiles.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+  }
 
   const photos = await Photo.find({ hidden: false, dominantColor: { $size: 3 } }).lean();
   if (!photos.length) throw createHttpError("No hay fotos con dominantColor.", 404);
@@ -145,12 +152,21 @@ const matchTilesInternal = async ({
   const maxUses = Number.isFinite(Number(maxUsesPerPhoto)) && Number(maxUsesPerPhoto) > 0
     ? Math.floor(Number(maxUsesPerPhoto))
     : null;
+  const mismatchThreshold =
+    mismatchDistanceThreshold === null ||
+    mismatchDistanceThreshold === undefined ||
+    mismatchDistanceThreshold === ""
+      ? null
+      : Number.isFinite(Number(mismatchDistanceThreshold)) && Number(mismatchDistanceThreshold) >= 0
+        ? Number(mismatchDistanceThreshold)
+        : null;
 
   const usageCount = new Map();
   let usedOnceCount = 0;
 
   const hasUsed = (id) => (usageCount.get(id) || 0) > 0;
   const exhausted = () => usedOnceCount >= photos.length;
+  const pickRandom = (list) => list[Math.floor(Math.random() * list.length)];
 
   const canUseBase = (photoId) => {
     if (!allowReuse && !reuseAfterExhaustion) return !hasUsed(photoId);
@@ -182,13 +198,29 @@ const matchTilesInternal = async ({
   for (const tile of tiles) {
     const candidates = getTileCandidates(tile);
     let chosen = null;
+    const shouldRandomize =
+      mismatchThreshold !== null &&
+      candidates.length > 0 &&
+      candidates[0].distance > mismatchThreshold;
 
     if (mustUseOnce && usedOnceCount < photos.length) {
-      chosen = candidates.find(({ photo }) => !hasUsed(photo._id) && canUseWithMax(photo._id));
+      const unusedCandidates = candidates.filter(({ photo }) => !hasUsed(photo._id) && canUseWithMax(photo._id));
+      if (unusedCandidates.length) {
+        chosen =
+          shouldRandomize && unusedCandidates.length > 1
+            ? pickRandom(unusedCandidates)
+            : unusedCandidates[0];
+      }
     }
 
     if (!chosen) {
-      chosen = candidates.find(({ photo }) => canUseWithMax(photo._id));
+      const allowedCandidates = candidates.filter(({ photo }) => canUseWithMax(photo._id));
+      if (allowedCandidates.length) {
+        chosen =
+          shouldRandomize && allowedCandidates.length > 1
+            ? pickRandom(allowedCandidates)
+            : allowedCandidates[0];
+      }
     }
 
     if (!chosen) {
@@ -199,11 +231,28 @@ const matchTilesInternal = async ({
         distance: colorDistance(tileColor, photo.dominantColor || [128, 128, 128]),
       })).sort((a, b) => a.distance - b.distance);
 
-      chosen = allScored.find(({ photo }) => canUseWithMax(photo._id));
+      const shouldRandomizeAll =
+        mismatchThreshold !== null &&
+        allScored.length > 0 &&
+        allScored[0].distance > mismatchThreshold;
+
+      const allowedAll = allScored.filter(({ photo }) => canUseWithMax(photo._id));
+      if (allowedAll.length) {
+        chosen =
+          shouldRandomizeAll && allowedAll.length > 1
+            ? pickRandom(allowedAll)
+            : allowedAll[0];
+      }
 
       if (!chosen && maxUses !== null) {
         // Si el límite máximo impide completar, lo relajamos para llenar el mosaico
-        chosen = allScored.find(({ photo }) => canUseWithMax(photo._id, true));
+        const allowedAllIgnoreMax = allScored.filter(({ photo }) => canUseWithMax(photo._id, true));
+        if (allowedAllIgnoreMax.length) {
+          chosen =
+            shouldRandomizeAll && allowedAllIgnoreMax.length > 1
+              ? pickRandom(allowedAllIgnoreMax)
+              : allowedAllIgnoreMax[0];
+        }
       }
     }
 
@@ -227,6 +276,7 @@ const matchTilesInternal = async ({
     allowReuse,
     reuseAfterExhaustion,
     matchPoolSize: poolSize,
+    mismatchDistanceThreshold: mismatchThreshold,
     minUseOnce: mustUseOnce,
     maxUsesPerPhoto: maxUses,
   };
@@ -354,6 +404,7 @@ const renderMosaicInternal = async ({
     allowReuse: config?.allowReuse,
     reuseAfterExhaustion: config?.reuseAfterExhaustion,
     matchPoolSize: config?.matchPoolSize,
+    mismatchDistanceThreshold: config?.mismatchDistanceThreshold ?? null,
     minUseOnce: config?.minUseOnce,
     maxUsesPerPhoto: config?.maxUsesPerPhoto ?? null,
     sharpness: finalSharpness,
@@ -499,8 +550,17 @@ export const updateMosaicConfig = async (req, res) => {
     const {
       enabled = false, mainImageUrl = "", tileWidth = 20, tileHeight = 20, mosaicKey = "default", mosaicSize = 2000,
       allowReuse = true, reuseAfterExhaustion = false, concurrency = 3, intervalHours = 24, refreshSeconds = 30,
-      sharpness = 0, overlayOpacity = 0, matchPoolSize = 5, minUseOnce = true, maxUsesPerPhoto = null,
+      sharpness = 0, overlayOpacity = 0, matchPoolSize = 5, mismatchDistanceThreshold = 150, minUseOnce = true, maxUsesPerPhoto = null,
     } = req.body;
+
+    const parsedMismatchThreshold =
+      mismatchDistanceThreshold === null || mismatchDistanceThreshold === undefined || mismatchDistanceThreshold === ""
+        ? null
+        : Number(mismatchDistanceThreshold);
+    const normalizedMismatchThreshold =
+      Number.isFinite(parsedMismatchThreshold) && parsedMismatchThreshold >= 0
+        ? parsedMismatchThreshold
+        : null;
 
     const update = {
       enabled: Boolean(enabled), mainImageUrl, tileWidth: Number(tileWidth) || 20, tileHeight: Number(tileHeight) || 20,
@@ -508,6 +568,7 @@ export const updateMosaicConfig = async (req, res) => {
       reuseAfterExhaustion: Boolean(reuseAfterExhaustion), concurrency: Math.max(1, Math.min(16, Number(concurrency) || 3)),
       intervalHours: Math.max(1, Number(intervalHours) || 24), refreshSeconds: Math.max(0, Number(refreshSeconds) || 0),
       matchPoolSize: Math.max(1, Number(matchPoolSize) || 1),
+      mismatchDistanceThreshold: normalizedMismatchThreshold,
       minUseOnce: Boolean(minUseOnce),
       maxUsesPerPhoto: Number.isFinite(Number(maxUsesPerPhoto)) && Number(maxUsesPerPhoto) > 0
         ? Math.floor(Number(maxUsesPerPhoto))
@@ -577,7 +638,7 @@ export const runMosaicPipelineFromConfig = async (configDoc) => {
   const {
     mainImageUrl, tileWidth, tileHeight, mosaicKey, mosaicSize,
     allowReuse, reuseAfterExhaustion, concurrency, sharpness, overlayOpacity,
-    matchPoolSize, minUseOnce, maxUsesPerPhoto,
+    matchPoolSize, mismatchDistanceThreshold, minUseOnce, maxUsesPerPhoto,
   } = config;
 
   await generateMainImageTilesInternal({
@@ -589,6 +650,7 @@ export const runMosaicPipelineFromConfig = async (configDoc) => {
     allowReuse,
     reuseAfterExhaustion,
     matchPoolSize,
+    mismatchDistanceThreshold,
     minUseOnce,
     maxUsesPerPhoto,
   });
@@ -623,6 +685,7 @@ export const matchTilesToPhotos = async (req, res) => {
       allowReuse = true,
       reuseAfterExhaustion = false,
       matchPoolSize,
+      mismatchDistanceThreshold,
       minUseOnce,
       maxUsesPerPhoto,
     } = req.body;
@@ -638,12 +701,17 @@ export const matchTilesToPhotos = async (req, res) => {
       maxUsesPerPhoto !== undefined && maxUsesPerPhoto !== null
         ? maxUsesPerPhoto
         : config?.maxUsesPerPhoto;
+    const resolvedMismatchThreshold =
+      mismatchDistanceThreshold !== undefined && mismatchDistanceThreshold !== null
+        ? mismatchDistanceThreshold
+        : config?.mismatchDistanceThreshold;
 
     const { matched } = await matchTilesInternal({
       mosaicKey,
       allowReuse,
       reuseAfterExhaustion,
       matchPoolSize: resolvedMatchPoolSize,
+      mismatchDistanceThreshold: resolvedMismatchThreshold,
       minUseOnce: resolvedMinUseOnce,
       maxUsesPerPhoto: resolvedMaxUsesPerPhoto,
     });
@@ -654,6 +722,7 @@ export const matchTilesToPhotos = async (req, res) => {
       allowReuse,
       reuseAfterExhaustion,
       matchPoolSize: resolvedMatchPoolSize,
+      mismatchDistanceThreshold: resolvedMismatchThreshold,
       minUseOnce: resolvedMinUseOnce,
       maxUsesPerPhoto: resolvedMaxUsesPerPhoto,
     });

@@ -10,6 +10,7 @@ const mosaicConfigSchema = new mongoose.Schema({
   sharpness: { type: Number, default: 0 },
   overlayOpacity: { type: Number, default: 20 }, 
   matchPoolSize: { type: Number, default: 5 },
+  mismatchDistanceThreshold: { type: Number, default: 150 },
   minUseOnce: { type: Boolean, default: true },
   maxUsesPerPhoto: { type: Number, default: null },
   allowReuse: { type: Boolean, default: true },
