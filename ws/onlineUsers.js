@@ -3,7 +3,7 @@ import { Server } from "socket.io";
 import EmailEntry from "../models/EmailEntry.js";
 
 export default function setupOnlineUsersWS(server) {
-  const DEFAULT_ORIGINS = ["http://localhost:5173", "http://localhost:5174"];
+  const DEFAULT_ORIGINS = ["http://sagrada-familia-frontend.s3-website-us-west-1.amazonaws.com", "http://sagrada-familia-frontend.s3-website-us-west-1.amazonaws.com"];
   const normalizeOrigin = (origin) => origin.replace(/\/+$/, "");
   const parseOrigins = (value) =>
     value
