@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import Admin from "../models/admins.js";
 import EmailEntry from "../models/EmailEntry.js";
+import { getOnlineEmails } from "../ws/onlineUsers.js";
 
 dotenv.config();
 
@@ -91,6 +92,7 @@ export const verifyAdminToken = (req, res) => {
 export const getAdminUsers = async (_req, res) => {
   try {
     const users = await EmailEntry.find().sort({ subscribedAt: -1 });
+    const onlineEmails = getOnlineEmails();
 
     const formatted = users.map((user) => ({
       _id: user._id,
@@ -99,13 +101,25 @@ export const getAdminUsers = async (_req, res) => {
       country: user.country,
       story: user.story,
       subscribedAt: user.subscribedAt,
+      isOnline: Boolean(
+        user.email &&
+          onlineEmails.has(String(user.email).trim().toLowerCase())
+      ),
       photos: (user.photos || []).map((photoUrl) => ({
         url: photoUrl,
         hidden: user.hiddenPhotos?.includes(photoUrl) || false,
       })),
     }));
 
-    return res.status(200).json(formatted);
+    const onlineFirst = [];
+    const offline = [];
+
+    formatted.forEach((user) => {
+      if (user.isOnline) onlineFirst.push(user);
+      else offline.push(user);
+    });
+
+    return res.status(200).json([...onlineFirst, ...offline]);
   } catch (error) {
     console.error("❌ Error al obtener usuarios:", error);
     return res

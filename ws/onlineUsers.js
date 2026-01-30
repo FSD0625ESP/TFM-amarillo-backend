@@ -2,6 +2,20 @@
 import { Server } from "socket.io";
 import EmailEntry from "../models/EmailEntry.js";
 
+// Shared in-memory presence store for WS and HTTP consumers.
+// Clave (email o fallback) -> { email, id, sockets: Set<socketId> }
+const onlineUsers = new Map();
+// socketId -> key
+const socketToKey = new Map();
+
+export const getOnlineEmails = () => {
+  const emails = new Set();
+  for (const { email } of onlineUsers.values()) {
+    if (email) emails.add(email);
+  }
+  return emails;
+};
+
 export default function setupOnlineUsersWS(server) {
   const DEFAULT_ORIGINS = ["http://sagrada-familia-frontend.s3-website-us-west-1.amazonaws.com", "http://sagrada-familia-frontend.s3-website-us-west-1.amazonaws.com"];
   const normalizeOrigin = (origin) => origin.replace(/\/+$/, "");
@@ -27,11 +41,6 @@ export default function setupOnlineUsersWS(server) {
       methods: ["GET", "POST"],
     },
   });
-
-  // Clave (email o fallback) -> { email, id, sockets: Set<socketId> }
-  const onlineUsers = new Map();
-  // socketId -> key
-  const socketToKey = new Map();
 
   // Búsqueda case-insensitive por email
   const existsEmail = async (email) => {
