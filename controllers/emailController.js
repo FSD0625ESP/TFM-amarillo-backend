@@ -424,3 +424,21 @@ export const addPhotosToUser = async (req, res) => {
     res.status(500).json({ message: "Error interno" });
   }
 };
+
+export const deletePhoto = async (req, res) => {
+  try {
+    const photo = await photo.findByid(req.params.id);
+    if (!photo) {
+      return res.status(404).json({ message: "Foto no encontrada" });
+    }
+
+    if (photo.owner.toString() !== req.user.userId) {
+      return res.status(403).json({ message: "No autorizado para eliminar esta foto" });
+    }
+    await photo.deleteOne();
+    res.json({message: "Foto Eliminada"})
+  } catch (error) {
+    console.error("❌ Error al eliminar la foto:", error);
+    return res.status(500).json({ message: "Error al eliminar la foto", error: error.message });
+  }
+};

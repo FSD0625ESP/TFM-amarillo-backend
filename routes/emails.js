@@ -10,7 +10,7 @@ import {
   deleteEmail,
   getUserPhotos,
   updateEmailEntry,
-  getUserPhotosByEmail,
+  deletePhoto,
   addPhotosToUser
 } from "../controllers/emailController.js";
 
@@ -19,17 +19,9 @@ import { verifyToken } from "../controllers/verify-token.js";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
-
-// 🔑 Magic link inteligente (registro o edición)
 router.post("/send-smart-link", sendSmartMagicLink);
-
-// 🔐 Verificar token
 router.get("/verify-token", verifyToken);
-
-// 📸 Registro
 router.post("/complete", upload.array("photos"), completeRegistration);
-
-// 👤 Emails
 router.get("/", getEmail);
 router.put("/:id", updateEmailEntry);
 router.delete("/:id", deleteEmail);
@@ -46,7 +38,6 @@ router.get("/me", authUser, async (req, res) => {
   if (!user) {
     return res.status(404).json({ message: "Usuario no encontrado" });
   }
-
   return res.json({
     email: user.email,
     name: user.name,
@@ -55,4 +46,5 @@ router.get("/me", authUser, async (req, res) => {
   });
 });
 
+router .delete("/id", authUser, deletePhoto);
 export default router;
