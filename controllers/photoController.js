@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
 import Photo from "../models/photo.js";
 import EmailEntry from "../models/EmailEntry.js";
 
@@ -47,7 +48,7 @@ const buildOwnerLookup = async (photoDocs) => {
   }, new Map());
 };
 
-const formatPhotoResponse = (photoDoc, ownerLookup) => {
+const formatPhotoResponse = (photoDoc, ownerLookup, currentUserId = null) => {
   if (!photoDoc) return photoDoc;
   const photo = photoDoc.toObject ? photoDoc.toObject() : photoDoc;
   const ownerValue = photo.owner;
@@ -65,15 +66,21 @@ const formatPhotoResponse = (photoDoc, ownerLookup) => {
 
   const ownerCountry = ownerInfo?.country ?? null;
 
+  const likedByUser =
+    currentUserId && Array.isArray(photo.likedBy)
+      ? photo.likedBy.some((id) => id?.toString() === currentUserId)
+      : false;
+
   return {
     ...photo,
     owner: ownerInfo,
     ownerEmail: ownerInfo?.email ?? null,
     country: photo?.country ?? ownerCountry,
+    likedByUser,
   };
 };
 
-const enrichPhotosWithOwners = async (photoDocs) => {
+const enrichPhotosWithOwners = async (photoDocs, currentUserId = null) => {
   const docsArray = Array.isArray(photoDocs)
     ? photoDocs
     : photoDocs
@@ -86,7 +93,8 @@ const enrichPhotosWithOwners = async (photoDocs) => {
 
   const validDocs = docsArray.filter(Boolean);
   const ownerLookup = validDocs.length ? await buildOwnerLookup(validDocs) : new Map();
-  const format = (doc) => (doc ? formatPhotoResponse(doc, ownerLookup) : null);
+  const format = (doc) =>
+    doc ? formatPhotoResponse(doc, ownerLookup, currentUserId) : null;
 
   if (Array.isArray(photoDocs)) {
     return docsArray.map(format);
@@ -95,10 +103,25 @@ const enrichPhotosWithOwners = async (photoDocs) => {
   return format(docsArray[0]);
 };
 
+const getOptionalUserId = (req) => {
+  const authHeader = req.headers.authorization || "";
+  const [scheme, token] = authHeader.split(" ");
+  if (scheme !== "Bearer" || !token) return null;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded?.userId;
+    return mongoose.Types.ObjectId.isValid(userId) ? userId : null;
+  } catch {
+    return null;
+  }
+};
+
 // 📸 Obtener todas las fotos
 export const getAllPhotos = async (req, res) => {
   try {
     const { country, year, sortBy } = req.query;
+    const currentUserId = getOptionalUserId(req);
 
     const filter = { hidden: false };
 
@@ -128,7 +151,7 @@ export const getAllPhotos = async (req, res) => {
     if (sortBy === "oldest") sortOptions = { createdAt: 1 };
 
     const photos = await Photo.find(filter).sort(sortOptions).lean();
-    const formattedPhotos = await enrichPhotosWithOwners(photos);
+    const formattedPhotos = await enrichPhotosWithOwners(photos, currentUserId);
     res.status(200).json(formattedPhotos);
   } catch (error) {
     res.status(500).json({ message: "Error al obtener las fotos", error });
