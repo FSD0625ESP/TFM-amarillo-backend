@@ -16,6 +16,7 @@ const mosaicSnapshotSchema = new mongoose.Schema({
     allowReuse: { type: Boolean },
     reuseAfterExhaustion: { type: Boolean },
     matchPoolSize: { type: Number },
+    mismatchDistanceThreshold: { type: Number, default: null },
     minUseOnce: { type: Boolean },
     maxUsesPerPhoto: { type: Number, default: null },
     sharpness: { type: Number },
