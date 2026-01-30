@@ -3,9 +3,27 @@ import { Server } from "socket.io";
 import EmailEntry from "../models/EmailEntry.js";
 
 export default function setupOnlineUsersWS(server) {
+  const DEFAULT_ORIGINS = ["http://localhost:5173", "http://localhost:5174"];
+  const normalizeOrigin = (origin) => origin.replace(/\/+$/, "");
+  const parseOrigins = (value) =>
+    value
+      ? value
+          .split(",")
+          .map((origin) => normalizeOrigin(origin.trim()))
+          .filter(Boolean)
+      : [];
+  const unique = (origins) => [...new Set(origins)];
+  const allowedOrigins = (() => {
+    const envOrigins = parseOrigins(process.env.FRONTEND_ORIGINS);
+    if (envOrigins.length) return unique(envOrigins);
+    const singleOrigin = parseOrigins(process.env.FRONTEND);
+    if (singleOrigin.length) return unique(singleOrigin);
+    return DEFAULT_ORIGINS;
+  })();
+
   const io = new Server(server, {
     cors: {
-      origin: ["http://localhost:5173", "http://localhost:5174"],
+      origin: allowedOrigins,
       methods: ["GET", "POST"],
     },
   });

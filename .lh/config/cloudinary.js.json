@@ -1,0 +1,26 @@
+{
+    "sourceFile": "config/cloudinary.js",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 2,
+            "patches": [
+                {
+                    "date": 1769561284791,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1769561761808,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -16,8 +16,9 @@\n   folder: defaultFolder,\n   format: defaultImageFormat,\n   transformation: [\n     {\n+      format: defaultImageFormat, \n       quality: defaultImageQuality,\n     },\n   ],\n };\n"
+                },
+                {
+                    "date": 1769561869155,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -14,8 +14,9 @@\n \n export const cloudinaryUploadOptions = {\n   folder: defaultFolder,\n   format: defaultImageFormat,\n+  \n   transformation: [\n     {\n       format: defaultImageFormat,\n       quality: defaultImageQuality,\n"
+                }
+            ],
+            "date": 1769561284791,
+            "name": "Commit-0",
+            "content": "import { v2 as cloudinary } from \"cloudinary\";\nimport dotenv from \"dotenv\";\ndotenv.config();\n\ncloudinary.config({\n  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,\n  api_key: process.env.CLOUDINARY_API_KEY,\n  api_secret: process.env.CLOUDINARY_API_SECRET,\n});\n\nconst defaultImageFormat = \"jpg\";\nconst defaultImageQuality = process.env.CLOUDINARY_IMAGE_QUALITY || \"auto:good\";\nconst defaultFolder = process.env.CLOUDINARY_FOLDER || \"proyecto_amarillo\";\n\nexport const cloudinaryUploadOptions = {\n  folder: defaultFolder,\n  format: defaultImageFormat,\n  transformation: [\n    {\n      \n      quality: defaultImageQuality,\n    },\n  ],\n};\n\nexport default cloudinary;\n"
+        }
+    ]
+}

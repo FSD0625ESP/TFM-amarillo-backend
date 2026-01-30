@@ -5,7 +5,7 @@ import cloudinary, { cloudinaryUploadOptions } from "../config/cloudinary.js";
 import Photo from "../models/photo.js";
 import { extractColors } from "../utils/extractColors.js";
 import { Readable } from "stream";
-import { getPngUrl } from "./cloudinaryUrls.js";
+//import { getPngUrl } from "./cloudinaryUrls.js"; cometnada para minimizar el tamaño de las imagenes
 
 dotenv.config();
 
@@ -58,7 +58,7 @@ export const completeRegistration = async (req, res) => {
             if (error) reject(error);
             else
               resolve({
-                url: getPngUrl(result.public_id),
+                url: result.secure_url, //getPngUrl(result.public_id),
                 publicId: result.public_id,
               });
           }
@@ -141,11 +141,56 @@ export const completeRegistration = async (req, res) => {
 export const getEmail = async (req, res) => {
   try {
     const users = await EmailEntry.find().lean();
+    const userIds = users.map((u) => u._id).filter(Boolean);
+    const userEmails = users.map((u) => u.email).filter(Boolean);
 
-    const enriched = users.map((u) => ({
-      ...u,
-      photosCount: Array.isArray(u.photos) ? u.photos.length : 0,
-    }));
+    let photoStats = [];
+    if (userIds.length || userEmails.length) {
+      photoStats = await Photo.aggregate([
+        {
+          $match: {
+            $or: [
+              userIds.length ? { owner: { $in: userIds } } : null,
+              userEmails.length ? { owner: { $in: userEmails } } : null,
+            ].filter(Boolean),
+          },
+        },
+        {
+          $group: {
+            _id: { owner: "$owner", hidden: "$hidden" },
+            count: { $sum: 1 },
+          },
+        },
+      ]);
+    }
+
+    const statsByOwner = new Map();
+    photoStats.forEach((stat) => {
+      const ownerKey = stat?._id?.owner ? String(stat._id.owner) : "";
+      if (!ownerKey) return;
+      const hidden = Boolean(stat?._id?.hidden);
+      const current = statsByOwner.get(ownerKey) || { active: 0, hidden: 0 };
+      if (hidden) current.hidden += stat.count || 0;
+      else current.active += stat.count || 0;
+      statsByOwner.set(ownerKey, current);
+    });
+
+    const enriched = users.map((u) => {
+      const idKey = u?._id ? String(u._id) : "";
+      const emailKey = u?.email ? String(u.email) : "";
+      const idStats = idKey ? statsByOwner.get(idKey) : null;
+      const emailStats = emailKey ? statsByOwner.get(emailKey) : null;
+      const photosActiveCount =
+        (idStats?.active || 0) + (emailStats?.active || 0);
+      const photosHiddenCount =
+        (idStats?.hidden || 0) + (emailStats?.hidden || 0);
+      return {
+        ...u,
+        photosActiveCount,
+        photosHiddenCount,
+        photosCount: photosActiveCount + photosHiddenCount,
+      };
+    });
 
     return res.status(200).json(enriched);
   } catch (error) {
@@ -307,7 +352,7 @@ export const getUserPhotosByEmail = async (req, res) => {
       story: user.story,
       year: user.year,
       name: user.name,
-      photos,         
+      photos,
     });
   } catch (error) {
     console.error("❌ Error getUserPhotosByEmail:", error);
@@ -332,10 +377,11 @@ export const addPhotosToUser = async (req, res) => {
       return res.status(400).json({ message: "Debes subir al menos una foto" });
     }
 
-    const uploadPromises = req.files.map((file) => {
-      return new Promise((resolve, reject) => {
+    const uploadPromises = req.files.map(async (file) => {
+      const colors = await extractColors(file.buffer, 1);
+      const asset = await new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
-          { folder: "proyecto_amarillo" },
+          cloudinaryUploadOptions,
           (error, result) => {
             if (error) reject(error);
             else
@@ -351,6 +397,7 @@ export const addPhotosToUser = async (req, res) => {
         bufferStream.push(null);
         bufferStream.pipe(stream);
       });
+      return { ...asset, colors };
     });
 
     const uploaded = await Promise.all(uploadPromises);
@@ -364,6 +411,7 @@ export const addPhotosToUser = async (req, res) => {
       year: year ? Number(year) : undefined,
       country: user.country,
       likes: 0,
+      dominantColor: Array.isArray(asset.colors) ? asset.colors[0] : [],
     }));
 
     await Photo.insertMany(photoDocs);

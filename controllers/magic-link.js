@@ -13,6 +13,9 @@ dotenv.config();
 
 export const sendSmartMagicLink = async (req, res) => {
   try {
+    const frontendBaseUrl = (process.env.FRONTEND || "http://localhost:5173")
+      .replace(/\/+$/, "");
+
     const { email } = req.body;
     if (!email) {
       return res.status(400).json({ message: "El email es requerido." });

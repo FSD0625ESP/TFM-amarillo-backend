@@ -8,6 +8,20 @@ const mosaicSnapshotSchema = new mongoose.Schema({
   height: { type: Number, required: true },
   tilesCount: { type: Number, required: true },
   format: { type: String, default: "jpg" },
+  config: {
+    tileWidth: { type: Number },
+    tileHeight: { type: Number },
+    outputWidth: { type: Number },
+    outputHeight: { type: Number },
+    allowReuse: { type: Boolean },
+    reuseAfterExhaustion: { type: Boolean },
+    matchPoolSize: { type: Number },
+    minUseOnce: { type: Boolean },
+    maxUsesPerPhoto: { type: Number, default: null },
+    sharpness: { type: Number },
+    overlayOpacity: { type: Number },
+    concurrency: { type: Number },
+  },
   createdAt: { type: Date, default: Date.now },
 });
 

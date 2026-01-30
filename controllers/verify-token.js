@@ -3,32 +3,37 @@ import EmailEntry from "../models/EmailEntry.js";
 
 export const verifyToken = async (req, res) => {
   try {
-    const { token } = req.query;
-    if (!token) {
-      return res.status(400).json({ message: "Token requerido" });
+    const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
+    const email = typeof decoded?.email === "string" ? decoded.email : null;
+
+    if (!email) {
+      return res.json(decoded);
     }
 
-    // 🔓 Verificar magic link
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return EmailEntry.findOne({ email })
+      .lean()
+      .then((user) => {
+        if (!user) {
+          return res.json(decoded);
+        }
 
-    const user = await EmailEntry.findOne({ email: decoded.email });
-    if (!user) {
-      return res.status(404).json({ message: "Usuario no encontrado" });
-    }
+        const sessionToken = jwt.sign(
+          { userId: user._id.toString(), email: user.email },
+          process.env.JWT_SECRET,
+          { expiresIn: "7d" }
+        );
 
-    const authToken = jwt.sign(
-      { userId: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    return res.json({
-      email: user.email,
-      name: user.name,
-      action: decoded.action,
-      token: authToken, 
-    });
-  } catch (err) {
-    return res.status(401).json({ message: "Token inválido o expirado" });
+        return res.json({
+          token: sessionToken,
+          email: user.email,
+          userId: user._id,
+          name: user.name,
+          country: user.country,
+          action: decoded.action,
+        });
+      })
+      .catch(() => res.status(500).json({ message: "Error interno" }));
+  } catch {
+    res.status(401).json({ message: "Token inválido" });
   }
 };
