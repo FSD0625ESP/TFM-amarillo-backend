@@ -35,7 +35,7 @@ export const sendSmartMagicLink = async (req, res) => {
         { expiresIn: "2h" }
       );
 
-      const link = `http://sagrada-familia-frontend.s3-website-us-west-1.amazonaws.com/register?token=${encodeURIComponent(
+      const link = `https://d2w2jevfn752dh.cloudfront.net/register?token=${encodeURIComponent(
         token
 
       // const link = `https://gilded-vacherin-e79d5a.netlify.app/register?token=${encodeURIComponent(
@@ -69,7 +69,7 @@ export const sendSmartMagicLink = async (req, res) => {
 
     // const link = `https://gilded-vacherin-e79d5a.netlify.app/userPage?token=${encodeURIComponent(
     //   token
-    const link = `http://sagrada-familia-frontend.s3-website-us-west-1.amazonaws.com/auth?token=${encodeURIComponent(
+    const link = `https://d2w2jevfn752dh.cloudfront.net/auth?token=${encodeURIComponent(
       token
     )}`;
 
